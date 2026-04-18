@@ -34,6 +34,7 @@ const database = {
   ],
   products: [],
   checks: [],
+  aisles: [],
   device_registry: [],
   sync_history: [],
   conflicts: [],
@@ -41,6 +42,7 @@ const database = {
     users: 2,
     products: 1,
     checks: 1,
+    aisles: 1,
     device_registry: 1,
     sync_history: 1,
     conflicts: 1
@@ -140,22 +142,26 @@ app.post('/api/sync/device/register', (req, res) => {
   res.json({ success: true, device });
 });
 
-app.get('/api/sync/devices', authenticate, (req, res) => {
+// Public route for back office
+app.get('/api/sync/devices', (req, res) => {
   res.json({
     devices: database.device_registry
   });
 });
 
-app.get('/api/sync/history', authenticate, (req, res) => {
+// Public route for back office
+app.get('/api/sync/history', (req, res) => {
   res.json({
     history: database.sync_history
   });
 });
 
-app.get('/api/sync/full', authenticate, (_req, res) => {
+// Public route for back office
+app.get('/api/sync/full', (_req, res) => {
   res.json({
     products: database.products,
     checks: database.checks,
+    aisles: database.aisles,
     timestamp: new Date().toISOString(),
   });
 });
@@ -175,10 +181,15 @@ app.get('/api/sync/changes', authenticate, (req, res) => {
     const createdAt = new Date(c.created_at);
     return createdAt > sinceDate;
   });
+  const aisles = database.aisles.filter(a => {
+    const createdAt = new Date(a.created_at);
+    return createdAt > sinceDate;
+  });
 
   res.json({
     products,
     checks,
+    aisles,
     timestamp: new Date().toISOString(),
   });
 });
@@ -211,6 +222,14 @@ app.post('/api/sync/push', authenticate, (req, res) => {
           Object.assign(existing, change.data);
         } else {
           database.checks.push({ ...change.data, id: database.next_ids.checks++ });
+        }
+        applied.push({ entity_id: change.entity_id, table: change.table });
+      } else if (change.table === 'aisles') {
+        const existing = database.aisles.find(a => a.id === change.entity_id);
+        if (existing) {
+          Object.assign(existing, change.data);
+        } else {
+          database.aisles.push({ ...change.data, id: database.next_ids.aisles++ });
         }
         applied.push({ entity_id: change.entity_id, table: change.table });
       }
@@ -336,6 +355,58 @@ app.delete('/api/products/:ean', authenticate, (req, res) => {
     fs.unlinkSync(photoPath);
   }
 
+  res.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// AISLES routes (Rayons)
+// ---------------------------------------------------------------------------
+// Public route for back office
+app.get('/api/aisles', (_req, res) => {
+  const sorted = [...database.aisles].sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+  res.json(sorted);
+});
+
+app.post('/api/aisles', authenticate, (req, res) => {
+  const { name, order_index } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  const aisle = {
+    id: database.next_ids.aisles++,
+    name,
+    order_index: order_index || database.aisles.length,
+    created_at: new Date().toISOString()
+  };
+
+  database.aisles.push(aisle);
+  res.json(aisle);
+});
+
+app.put('/api/aisles/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { name, order_index } = req.body;
+
+  const aisle = database.aisles.find(a => a.id === parseInt(id));
+  if (!aisle) {
+    return res.status(404).json({ error: 'Aisle not found' });
+  }
+
+  if (name) aisle.name = name;
+  if (order_index !== undefined) aisle.order_index = order_index;
+
+  res.json(aisle);
+});
+
+app.delete('/api/aisles/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const index = database.aisles.findIndex(a => a.id === parseInt(id));
+  if (index === -1) {
+    return res.status(404).json({ error: 'Aisle not found' });
+  }
+
+  database.aisles.splice(index, 1);
   res.json({ success: true });
 });
 

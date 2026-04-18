@@ -276,6 +276,89 @@
             font-family: monospace;
         }
 
+        .aisle-item {
+            background: white;
+            border: 2px solid #eee;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            user-select: none;
+            transition: all 0.2s;
+        }
+
+        .aisle-item:hover {
+            border-color: #667eea;
+            background: #f9f9f9;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+
+        .aisle-item.dragging {
+            opacity: 0.5;
+            background: #f0f0f0;
+        }
+
+        .aisle-item.drag-over {
+            border-color: #667eea;
+            background: #f5f5ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .aisle-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .aisle-drag-handle {
+            color: #999;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .aisle-info {
+            flex: 1;
+        }
+
+        .aisle-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .aisle-order {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .aisle-buttons {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn-delete {
+            background: #ffebee;
+            color: #c62828;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .btn-delete:hover {
+            background: #ef5350;
+            color: white;
+        }
+
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -354,6 +437,7 @@
         <div class="tabs-container">
             <div class="tabs-header">
                 <button class="tab-button active" onclick="switchTab('appareils')">📱 Appareils</button>
+                <button class="tab-button" onclick="switchTab('rayons')">🏪 Rayons</button>
                 <button class="tab-button" onclick="switchTab('produits')">📦 Produits</button>
                 <button class="tab-button" onclick="switchTab('verifications')">✅ Vérifications</button>
                 <button class="tab-button" onclick="switchTab('historique')">🔄 Historique</button>
@@ -364,6 +448,16 @@
                 <div id="appareils" class="tab-pane active">
                     <div class="section-title">📱 Appareils Synchronisés</div>
                     <div id="devices" class="device-list"></div>
+                </div>
+
+                <!-- TAB: Rayons -->
+                <div id="rayons" class="tab-pane">
+                    <div class="section-title">🏪 Rayons</div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <input type="text" id="aisleNameInput" placeholder="Nom du rayon..." style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key === 'Enter') addAisle()">
+                        <button onclick="addAisle()" style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px;">➕ Ajouter</button>
+                    </div>
+                    <div id="aislesList" style="flex: 1; overflow-y: auto;"></div>
                 </div>
 
                 <!-- TAB: Produits -->
@@ -402,17 +496,33 @@
 
             // Show selected pane
             document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+
+            // Update URL with anchor
+            window.history.pushState(null, null, `#${tabName}`);
+        }
+
+        function restoreTabFromURL() {
+            const hash = window.location.hash.substring(1);
+            const validTabs = ['appareils', 'rayons', 'produits', 'verifications', 'historique'];
+
+            if (hash && validTabs.includes(hash)) {
+                switchTab(hash);
+            }
         }
 
         async function loadAllData() {
             try {
                 const fullSync = await fetch('/api/sync/full').then(r => r.json());
                 const devices = await fetch('/api/sync/devices').then(r => r.json());
+                const aisles = await fetch('/api/aisles').then(r => r.json());
                 const history = await fetch('/api/sync/history').then(r => r.json());
 
-                displayStats(fullSync, devices);
+                displayStats(fullSync, devices, aisles);
                 displayDevices(devices);
+                displayAisles(aisles);
                 displayProducts(fullSync.products);
                 displayChecks(fullSync.checks);
                 displayHistory(history);
@@ -431,16 +541,21 @@
             }
         }
 
-        function displayStats(fullSync, devices) {
+        function displayStats(fullSync, devices, aisles) {
             const stats = document.getElementById('stats');
             const deviceCount = devices.devices ? devices.devices.length : 0;
             const productCount = fullSync.products ? fullSync.products.length : 0;
             const checkCount = fullSync.checks ? fullSync.checks.length : 0;
+            const aisleCount = aisles ? aisles.length : 0;
 
             stats.innerHTML = `
                 <div class="stat-box">
                     <div class="stat-label">Produits</div>
                     <div class="stat-number">${productCount}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Rayons</div>
+                    <div class="stat-number">${aisleCount}</div>
                 </div>
                 <div class="stat-box">
                     <div class="stat-label">Vérifications</div>
@@ -481,6 +596,39 @@
                 `;
             }
             devices.innerHTML = html;
+        }
+
+        function displayAisles(aisles) {
+            const container = document.getElementById('aislesList');
+            const aislelist = aisles || [];
+
+            if (aislelist.length === 0) {
+                container.innerHTML = '<div class="empty">Aucun rayon</div>';
+                return;
+            }
+
+            let html = '';
+            for (const aisle of aislelist) {
+                html += `
+                    <div class="aisle-item" draggable="true" data-id="${aisle.id}" data-order="${aisle.order_index}">
+                        <div class="aisle-content">
+                            <div class="aisle-drag-handle">⋮⋮</div>
+                            <div class="aisle-info">
+                                <div class="aisle-name" onclick="editAisleName(${aisle.id}, '${aisle.name.replace(/'/g, "\\'")}')">
+                                    ${aisle.name}
+                                    <span style="color: #999; font-size: 11px; margin-left: 5px;">(cliquez pour éditer)</span>
+                                </div>
+                                <div class="aisle-order">Ordre: ${aisle.order_index}</div>
+                            </div>
+                        </div>
+                        <div class="aisle-buttons">
+                            <button class="btn-delete" onclick="deleteAisle(${aisle.id})">🗑️ Supprimer</button>
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+            setupDragAndDrop();
         }
 
         function displayProducts(products) {
@@ -561,8 +709,203 @@
             container.innerHTML = html;
         }
 
+        let draggedElement = null;
+
+        function setupDragAndDrop() {
+            const items = document.querySelectorAll('.aisle-item');
+            items.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    draggedElement = item;
+                    item.classList.add('dragging');
+                });
+
+                item.addEventListener('dragend', (e) => {
+                    item.classList.remove('dragging');
+                    items.forEach(i => i.classList.remove('drag-over'));
+                });
+
+                item.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (item !== draggedElement) {
+                        item.classList.add('drag-over');
+                    }
+                });
+
+                item.addEventListener('dragleave', (e) => {
+                    item.classList.remove('drag-over');
+                });
+
+                item.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    if (item !== draggedElement) {
+                        swapAisles(draggedElement, item);
+                    }
+                });
+            });
+        }
+
+        function swapAisles(fromItem, toItem) {
+            const fromOrder = parseInt(fromItem.dataset.order);
+            const toOrder = parseInt(toItem.dataset.order);
+            const fromId = parseInt(fromItem.dataset.id);
+            const toId = parseInt(toItem.dataset.id);
+
+            // Swap orders visually
+            fromItem.dataset.order = toOrder;
+            toItem.dataset.order = fromOrder;
+            fromItem.querySelector('.aisle-order').textContent = `Ordre: ${toOrder}`;
+            toItem.querySelector('.aisle-order').textContent = `Ordre: ${fromOrder}`;
+
+            // Reorder in DOM
+            const parent = fromItem.parentNode;
+            if (fromOrder < toOrder) {
+                toItem.parentNode.insertBefore(fromItem, toItem.nextSibling);
+            } else {
+                toItem.parentNode.insertBefore(fromItem, toItem);
+            }
+
+            // Update on server
+            updateAisleOrder(fromId, toOrder);
+            updateAisleOrder(toId, fromOrder);
+        }
+
+        async function addAisle() {
+            const input = document.getElementById('aisleNameInput');
+            const name = input.value.trim();
+
+            if (!name) {
+                alert('Veuillez entrer un nom de rayon');
+                return;
+            }
+
+            try {
+                const token = await getToken();
+                const response = await fetch('/api/aisles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name,
+                        order_index: 999 // Will be reordered
+                    })
+                });
+
+                if (response.ok) {
+                    input.value = '';
+                    await loadAllData();
+                } else {
+                    alert('Erreur lors de la création du rayon');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de connexion');
+            }
+        }
+
+        async function deleteAisle(id) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer ce rayon ?')) {
+                return;
+            }
+
+            try {
+                const token = await getToken();
+                const response = await fetch(`/api/aisles/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    await loadAllData();
+                } else {
+                    alert('Erreur lors de la suppression');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de connexion');
+            }
+        }
+
+        async function updateAisleOrder(id, order) {
+            try {
+                const token = await getToken();
+                await fetch(`/api/aisles/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ order_index: order })
+                });
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        function editAisleName(id, currentName) {
+            const newName = prompt('Nouveau nom du rayon:', currentName);
+            if (newName !== null && newName.trim()) {
+                updateAisleName(id, newName.trim());
+            }
+        }
+
+        async function updateAisleName(id, name) {
+            try {
+                const token = await getToken();
+                const response = await fetch(`/api/aisles/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ name })
+                });
+
+                if (response.ok) {
+                    await loadAllData();
+                } else {
+                    alert('Erreur lors de la modification');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de connexion');
+            }
+        }
+
+        async function getToken() {
+            // For back office, we use the hardcoded token
+            // In production, implement proper authentication
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login: 'Honfleur', password: 'Honfleur' })
+            });
+            const data = await response.json();
+            return data.token;
+        }
+
         // Charger au démarrage
-        window.addEventListener('load', loadAllData);
+        window.addEventListener('load', () => {
+            restoreTabFromURL();
+            loadAllData();
+
+            // Event listener pour la touche Entrée dans le champ d'ajout de rayon
+            const aisleInput = document.getElementById('aisleNameInput');
+            if (aisleInput) {
+                aisleInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addAisle();
+                    }
+                });
+            }
+        });
+
+        // Gérer les changements d'ancre (boutons précédent/suivant)
+        window.addEventListener('hashchange', restoreTabFromURL);
 
         // Auto-refresh toutes les 30 secondes
         setInterval(loadAllData, 30000);
