@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DLC Manager - Back Office</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar Stats */
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-right: 1px solid #eee;
+            padding: 20px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            color: white;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            opacity: 0.9;
+        }
+
+        .refresh-time {
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+
+        .refresh-btn {
+            width: 100%;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 15px;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #764ba2;
+        }
+
+        /* Tabs */
+        .tabs-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tabs-header {
+            display: flex;
+            background: white;
+            border-bottom: 2px solid #eee;
+            flex-shrink: 0;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 15px;
+            background: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: #666;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-button:hover {
+            background: #f9f9f9;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tabs-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-pane {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 30px;
+        }
+
+        .tab-pane.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Content */
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            background: #f5f5f5;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+        }
+
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+            color: #666;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .device-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .device-item {
+            padding: 12px;
+            border-left: 3px solid #667eea;
+            background: #f9f9f9;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .device-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .device-detail {
+            color: #666;
+            margin: 2px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status-offline {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-size: 13px;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .grid-section {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .grid-section table {
+            font-size: 12px;
+        }
+
+        .grid-section th,
+        .grid-section td {
+            padding: 6px 8px;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 250px;
+            }
+
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .tab-button {
+                font-size: 12px;
+                padding: 12px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                padding: 15px;
+            }
+
+            .tabs-header {
+                flex-wrap: wrap;
+            }
+
+            .tab-button {
+                flex: 0 1 25%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📊 DLC Manager - Back Office</h1>
+        <p class="subtitle">Gestion centralisée des données de synchronisation</p>
+    </header>
+
+    <div class="main-content">
+        <!-- SIDEBAR STATS -->
+        <div class="sidebar">
+            <div id="stats"></div>
+            <button class="refresh-btn" onclick="loadAllData()">🔄 Actualiser</button>
+            <div class="refresh-time" id="refreshTime"></div>
+        </div>
+
+        <!-- TABS CONTENT -->
+        <div class="tabs-container">
+            <div class="tabs-header">
+                <button class="tab-button active" onclick="switchTab('appareils')">📱 Appareils</button>
+                <button class="tab-button" onclick="switchTab('produits')">📦 Produits</button>
+                <button class="tab-button" onclick="switchTab('verifications')">✅ Vérifications</button>
+                <button class="tab-button" onclick="switchTab('historique')">🔄 Historique</button>
+            </div>
+
+            <div class="tabs-content">
+                <!-- TAB: Appareils -->
+                <div id="appareils" class="tab-pane active">
+                    <div class="section-title">📱 Appareils Synchronisés</div>
+                    <div id="devices" class="device-list"></div>
+                </div>
+
+                <!-- TAB: Produits -->
+                <div id="produits" class="tab-pane">
+                    <div class="section-title">📦 Produits</div>
+                    <div id="message"></div>
+                    <div id="products" style="flex: 1; overflow-y: auto;"></div>
+                </div>
+
+                <!-- TAB: Vérifications -->
+                <div id="verifications" class="tab-pane">
+                    <div class="section-title">✅ Vérifications</div>
+                    <div id="checks" style="flex: 1; overflow-y: auto;"></div>
+                </div>
+
+                <!-- TAB: Historique -->
+                <div id="historique" class="tab-pane">
+                    <div class="section-title">🔄 Historique de Synchronisation</div>
+                    <div id="history" style="flex: 1; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lastRefresh = null;
+
+        function switchTab(tabName) {
+            // Hide all panes
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected pane
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function loadAllData() {
+            try {
+                const fullSync = await fetch('/api/sync/full').then(r => r.json());
+                const devices = await fetch('/api/sync/devices').then(r => r.json());
+                const history = await fetch('/api/sync/history').then(r => r.json());
+
+                displayStats(fullSync, devices);
+                displayDevices(devices);
+                displayProducts(fullSync.products);
+                displayChecks(fullSync.checks);
+                displayHistory(history);
+
+                lastRefresh = new Date();
+                updateRefreshTime();
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        function updateRefreshTime() {
+            if (lastRefresh) {
+                const time = lastRefresh.toLocaleTimeString('fr-FR');
+                document.getElementById('refreshTime').textContent = `Mis à jour: ${time}`;
+            }
+        }
+
+        function displayStats(fullSync, devices) {
+            const stats = document.getElementById('stats');
+            const deviceCount = devices.devices ? devices.devices.length : 0;
+            const productCount = fullSync.products ? fullSync.products.length : 0;
+            const checkCount = fullSync.checks ? fullSync.checks.length : 0;
+
+            stats.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-label">Produits</div>
+                    <div class="stat-number">${productCount}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Vérifications</div>
+                    <div class="stat-number">${checkCount}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Appareils</div>
+                    <div class="stat-number">${deviceCount}</div>
+                </div>
+            `;
+        }
+
+        function displayDevices(data) {
+            const devices = document.getElementById('devices');
+            const deviceList = data.devices || [];
+
+            if (deviceList.length === 0) {
+                devices.innerHTML = '<div class="empty">Aucun appareil enregistré</div>';
+                return;
+            }
+
+            let html = '';
+            for (const device of deviceList) {
+                const lastSeen = device.last_seen ? new Date(device.last_seen).toLocaleString('fr-FR') : 'N/A';
+                const isActive = device.is_active ? 'Actif' : 'Inactif';
+                const statusClass = device.is_active ? 'status-active' : 'status-offline';
+
+                html += `
+                    <div class="device-item">
+                        <div class="device-name">${device.device_name}</div>
+                        <div class="device-detail">🆔 <code>${device.device_id}</code></div>
+                        <div class="device-detail">📱 ${device.app_version}</div>
+                        <div class="device-detail">⏱️ ${lastSeen}</div>
+                        <div class="device-detail">
+                            <span class="status-badge ${statusClass}">${isActive}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            devices.innerHTML = html;
+        }
+
+        function displayProducts(products) {
+            const container = document.getElementById('products');
+            const productList = products || [];
+
+            if (productList.length === 0) {
+                container.innerHTML = '<div class="empty">Aucun produit</div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>ID</th><th>Nom</th><th>Catégorie</th><th>Code-barres</th></tr></thead><tbody>';
+            for (const product of productList.slice(0, 100)) {
+                html += `
+                    <tr>
+                        <td>${product.id}</td>
+                        <td>${product.name}</td>
+                        <td>${product.category}</td>
+                        <td>${product.barcode || '-'}</td>
+                    </tr>
+                `;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function displayChecks(checks) {
+            const container = document.getElementById('checks');
+            const checkList = checks || [];
+
+            if (checkList.length === 0) {
+                container.innerHTML = '<div class="empty">Aucune vérification</div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>ID</th><th>Produit</th><th>Date</th><th>Statut</th><th>DLC</th></tr></thead><tbody>';
+            for (const check of checkList.slice(0, 100)) {
+                const statusClass = check.status === 'ok' ? '✅' : '❌';
+                html += `
+                    <tr>
+                        <td>${check.id}</td>
+                        <td>${check.product_id}</td>
+                        <td>${check.check_date}</td>
+                        <td>${statusClass} ${check.status}</td>
+                        <td>${check.next_expiry_date || '-'}</td>
+                    </tr>
+                `;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function displayHistory(data) {
+            const container = document.getElementById('history');
+            const history = data.history || [];
+
+            if (history.length === 0) {
+                container.innerHTML = '<div class="empty">Aucun historique</div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Appareil</th><th>Table</th><th>Op</th><th>ID</th><th>Date</th></tr></thead><tbody>';
+            for (const entry of history.slice(0, 100)) {
+                const date = new Date(entry.created_at).toLocaleString('fr-FR');
+                const op = entry.operation === 'CREATE' ? '➕' : entry.operation === 'UPDATE' ? '✏️' : '🗑️';
+                const deviceId = entry.device_id.substring(0, 8);
+                html += `
+                    <tr>
+                        <td><code>${deviceId}...</code></td>
+                        <td>${entry.table_name}</td>
+                        <td>${op}</td>
+                        <td>${entry.entity_id}</td>
+                        <td>${date}</td>
+                    </tr>
+                `;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // Charger au démarrage
+        window.addEventListener('load', loadAllData);
+
+        // Auto-refresh toutes les 30 secondes
+        setInterval(loadAllData, 30000);
+    </script>
+</body>
+</html>
