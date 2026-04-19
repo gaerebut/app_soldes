@@ -109,7 +109,17 @@ app.use(cors());
 app.use(express.json());
 
 // Serve static files (HTML, CSS, JS)
-app.use(express.static(path.join(__dirname, 'public')));
+// Disable caching for HTML so iOS Safari (and others) always pick up
+// the latest backoffice UI — assets here are tiny.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
+}));
 
 // Sync Modules (will use mock DB)
 const conflictResolver = new ConflictResolver(db);

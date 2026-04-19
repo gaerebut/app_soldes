@@ -2,7 +2,9 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>DLC Manager - Back Office</title>
     <style>
         * {
@@ -21,6 +23,8 @@
             background: #f5f5f5;
             display: flex;
             flex-direction: column;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-text-size-adjust: 100%;
         }
 
         header {
@@ -352,11 +356,37 @@
             font-size: 12px;
             font-weight: 600;
             transition: background 0.2s;
+            min-height: 36px;
+            min-width: 36px;
         }
 
         .btn-delete:hover {
             background: #ef5350;
             color: white;
+        }
+
+        .btn-move {
+            background: #eef0ff;
+            color: #4a55a8;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 700;
+            transition: background 0.2s;
+            min-height: 36px;
+            min-width: 36px;
+        }
+
+        .btn-move:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-move:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
         }
 
         .grid-2 {
@@ -406,13 +436,25 @@
 
             body {
                 min-height: 100vh;
+                /* iOS Safari: account for the dynamic address/tool bar. */
+                min-height: -webkit-fill-available;
+                min-height: 100dvh;
             }
 
             header {
                 padding: 12px 16px;
+                /* Respect the iPhone notch / status bar. */
+                padding-top: calc(12px + env(safe-area-inset-top));
+                padding-left: calc(16px + env(safe-area-inset-left));
+                padding-right: calc(16px + env(safe-area-inset-right));
                 position: sticky;
                 top: 0;
                 z-index: 10;
+            }
+
+            /* Prevent iOS Safari from zooming in when focusing form inputs. */
+            input, select, textarea {
+                font-size: 16px !important;
             }
 
             h1 {
@@ -744,14 +786,20 @@
                 return;
             }
 
+            // Sort by order_index so ▲/▼ buttons can swap with neighbours.
+            const sorted = [...aislelist].sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+
             let html = '';
-            for (const aisle of aislelist) {
+            sorted.forEach((aisle, idx) => {
+                const safeName = aisle.name.replace(/'/g, "\\'");
+                const isFirst = idx === 0;
+                const isLast = idx === sorted.length - 1;
                 html += `
                     <div class="aisle-item" draggable="true" data-id="${aisle.id}" data-order="${aisle.order_index}">
                         <div class="aisle-content">
-                            <div class="aisle-drag-handle">⋮⋮</div>
+                            <div class="aisle-drag-handle" aria-hidden="true">⋮⋮</div>
                             <div class="aisle-info">
-                                <div class="aisle-name" onclick="editAisleName(${aisle.id}, '${aisle.name.replace(/'/g, "\\'")}')">
+                                <div class="aisle-name" onclick="editAisleName(${aisle.id}, '${safeName}')">
                                     ${aisle.name}
                                     <span style="color: #999; font-size: 11px; margin-left: 5px;">(cliquez pour éditer)</span>
                                 </div>
@@ -759,11 +807,13 @@
                             </div>
                         </div>
                         <div class="aisle-buttons">
-                            <button class="btn-delete" onclick="deleteAisle(${aisle.id})">🗑️ Supprimer</button>
+                            <button class="btn-move" onclick="moveAisle(${aisle.id}, -1)" ${isFirst ? 'disabled' : ''} aria-label="Monter">▲</button>
+                            <button class="btn-move" onclick="moveAisle(${aisle.id}, 1)" ${isLast ? 'disabled' : ''} aria-label="Descendre">▼</button>
+                            <button class="btn-delete" onclick="deleteAisle(${aisle.id})">🗑️</button>
                         </div>
                     </div>
                 `;
-            }
+            });
             container.innerHTML = html;
             setupDragAndDrop();
         }
@@ -935,6 +985,34 @@
                 } else {
                     alert('Erreur lors de la création du rayon');
                 }
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur de connexion');
+            }
+        }
+
+        async function moveAisle(id, direction) {
+            // Re-read current order from DOM (in case user moved several before refresh).
+            const items = Array.from(document.querySelectorAll('#aislesList .aisle-item'));
+            const idx = items.findIndex(el => parseInt(el.dataset.id) === id);
+            if (idx === -1) return;
+            const target = idx + direction;
+            if (target < 0 || target >= items.length) return;
+
+            const a = items[idx];
+            const b = items[target];
+            const aId = parseInt(a.dataset.id);
+            const bId = parseInt(b.dataset.id);
+            const aOrder = parseInt(a.dataset.order);
+            const bOrder = parseInt(b.dataset.order);
+
+            // Update both on the server, then refresh the list.
+            try {
+                await Promise.all([
+                    updateAisleOrder(aId, bOrder),
+                    updateAisleOrder(bId, aOrder),
+                ]);
+                await loadAllData();
             } catch (error) {
                 console.error('Erreur:', error);
                 alert('Erreur de connexion');

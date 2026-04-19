@@ -200,6 +200,18 @@ const syncRouter = express.Router();
 app.use(cors());
 app.use(express.json());
 
+// Serve the backoffice UI from server/public (mobile-friendly, no auth on the
+// page itself — auth happens via /api/auth/login from the browser).
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
+}));
+
 // Register sync routes
 createSyncRoutes(syncRouter, db, conflictResolver, deviceRegistry);
 app.use(syncRouter);
