@@ -398,23 +398,160 @@
         }
 
         @media (max-width: 768px) {
-            .main-content {
-                flex-direction: column;
+            /* Release the rigid full-height layout so the page can scroll. */
+            html, body {
+                overflow: auto;
+                height: auto;
             }
 
+            body {
+                min-height: 100vh;
+            }
+
+            header {
+                padding: 12px 16px;
+                position: sticky;
+                top: 0;
+                z-index: 10;
+            }
+
+            h1 {
+                font-size: 18px;
+                margin-bottom: 2px;
+            }
+
+            .subtitle {
+                font-size: 11px;
+            }
+
+            .main-content {
+                flex-direction: column;
+                overflow: visible;
+                flex: none;
+            }
+
+            /* Compact stats: a single row of 4 small tiles + a refresh strip. */
             .sidebar {
                 width: 100%;
                 border-right: none;
                 border-bottom: 1px solid #eee;
-                padding: 15px;
+                padding: 12px;
+                overflow: visible;
+            }
+
+            #stats {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 8px;
+            }
+
+            .stat-box {
+                padding: 10px 6px;
+                margin-bottom: 0;
+                border-radius: 6px;
+            }
+
+            .stat-number {
+                font-size: 20px;
+                margin: 4px 0;
+            }
+
+            .stat-label {
+                font-size: 10px;
+            }
+
+            .refresh-btn {
+                margin-top: 10px;
+                padding: 8px;
+            }
+
+            .refresh-time {
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+
+            /* Tabs: horizontally scrollable instead of wrapping & cramped. */
+            .tabs-container {
+                overflow: visible;
             }
 
             .tabs-header {
-                flex-wrap: wrap;
+                position: sticky;
+                top: 56px;
+                z-index: 9;
+                overflow-x: auto;
+                overflow-y: hidden;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .tabs-header::-webkit-scrollbar {
+                display: none;
             }
 
             .tab-button {
-                flex: 0 1 25%;
+                flex: 0 0 auto;
+                padding: 12px 14px;
+                font-size: 13px;
+                white-space: nowrap;
+            }
+
+            .tabs-content {
+                overflow: visible;
+            }
+
+            .tab-pane {
+                padding: 14px;
+                overflow: visible;
+            }
+
+            .tab-pane.active {
+                display: block;
+            }
+
+            /* Tables: allow horizontal scroll rather than overflowing the viewport. */
+            .tab-pane table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            #products,
+            #checks,
+            #history,
+            #aislesList {
+                overflow: visible;
+            }
+
+            .aisle-item {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .aisle-buttons {
+                justify-content: flex-end;
+            }
+        }
+
+        @media (max-width: 420px) {
+            #stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .tab-button {
+                padding: 10px 12px;
+                font-size: 12px;
+            }
+
+            h1 {
+                font-size: 16px;
+            }
+
+            .tabs-header {
+                top: 52px;
             }
         }
     </style>
