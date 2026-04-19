@@ -1,0 +1,25 @@
+[Unit]
+Description=DLC Manager backoffice
+Documentation=https://github.com/gaerebut/app_soldes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/app_soldes/server
+EnvironmentFile=/root/app_soldes/server/.env
+ExecStart=/usr/bin/node /root/app_soldes/server/index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/dlc-manager.log
+StandardError=append:/var/log/dlc-manager.log
+
+# Harden a bit (optional, tighten later).
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

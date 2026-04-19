@@ -16,9 +16,14 @@ const DeviceRegistry = require('./deviceRegistry');
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const PORT = 3000;
-const JWT_SECRET = 'dlc-manager-secret-key-change-in-production';
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+const JWT_SECRET = process.env.JWT_SECRET || 'dlc-manager-secret-key-change-in-production';
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+
+if (JWT_SECRET === 'dlc-manager-secret-key-change-in-production') {
+  console.warn('⚠️  JWT_SECRET uses the default value — set JWT_SECRET env var in production.');
+}
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -104,7 +109,17 @@ app.use(cors());
 app.use(express.json());
 
 // Serve static files (HTML, CSS, JS)
-app.use(express.static(path.join(__dirname, 'public')));
+// Disable caching for HTML so iOS Safari (and others) always pick up
+// the latest backoffice UI — assets here are tiny.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
+}));
 
 // Sync Modules (will use mock DB)
 const conflictResolver = new ConflictResolver(db);
@@ -288,6 +303,13 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Health check (unauthenticated — used by monitoring and reverse proxies)
+// ---------------------------------------------------------------------------
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', mode: 'in-memory', uptime: process.uptime() });
+});
 
 // ---------------------------------------------------------------------------
 // AUTH routes
@@ -545,11 +567,11 @@ app.use((err, _req, res, _next) => {
 // ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`
 ╔════════════════════════════════════════════╗
 ║  DLC Manager Server (Development Mode)    ║
-║  http://localhost:${PORT}                     ║
+║  http://${HOST}:${PORT}
 ║                                            ║
 ║  ⚠️  IN-MEMORY DATABASE (data not persisted)  ║
 ║  For production: Use index.js with        ║

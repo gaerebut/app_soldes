@@ -1,0 +1,12 @@
+# Cron entry for the DLC Manager auto-deploy.
+# Install with:
+#   sudo cp deploy/dlc-auto-pull.cron /etc/cron.d/dlc-auto-pull
+#   sudo chown root:root /etc/cron.d/dlc-auto-pull
+#   sudo chmod 644 /etc/cron.d/dlc-auto-pull
+#
+# Note: /etc/cron.d entries require the username field (here: root).
+# Adjust BRANCH to track a different branch (e.g. main once merged).
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+* * * * * root REPO_DIR=/root/app_soldes BRANCH=claude/remote-backoffice-setup-3E7FN PM2_NAME=dlc-manager /root/app_soldes/deploy/auto-pull.sh >> /var/log/dlc-auto-pull.log 2>&1
