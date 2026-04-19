@@ -1,7 +1,8 @@
 {
   "cli": {
     "version": ">= 16.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local",
+    "requireCommit": false
   },
   "build": {
     "development": {
@@ -10,7 +11,12 @@
       "ios": {
         "simulator": true
       },
-      "channel": "development"
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DEFAULT_SERVER_URL": "http://187.124.215.103:3000"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -37,6 +43,17 @@
     }
   },
   "submit": {
-    "production": {}
+    "preview": {
+      "ios": {
+        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
+      }
+    },
+    "production": {
+      "ios": {
+        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
+      }
+    }
   }
 }
