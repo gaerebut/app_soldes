@@ -12,10 +12,15 @@ const DeviceRegistry = require('./deviceRegistry');
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const PORT = 3000;
-const JWT_SECRET = 'dlc-manager-secret-key-change-in-production';
-const DB_PATH = path.join(__dirname, 'dlc-manager.db');
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+const JWT_SECRET = process.env.JWT_SECRET || 'dlc-manager-secret-key-change-in-production';
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'dlc-manager.db');
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+
+if (JWT_SECRET === 'dlc-manager-secret-key-change-in-production') {
+  console.warn('⚠️  JWT_SECRET uses the default value — set JWT_SECRET env var in production.');
+}
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -216,6 +221,13 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Health check (unauthenticated — used by monitoring and reverse proxies)
+// ---------------------------------------------------------------------------
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', mode: 'sqlite', uptime: process.uptime() });
+});
 
 // ---------------------------------------------------------------------------
 // AUTH routes
@@ -432,6 +444,6 @@ app.use((err, _req, res, _next) => {
 // ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
-  console.log(`DLC Manager server running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`DLC Manager server running on http://${HOST}:${PORT}`);
 });
