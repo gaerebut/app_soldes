@@ -150,6 +150,49 @@ mets `http://187.124.215.103:3000` (voie 1a) ou `http://187.124.215.103` (voie 1
 
 ---
 
+## 7. Auto-deploy (cron-based git pull)
+
+Une fois la voie 1 et l'étape 4 faites, tu peux automatiser les déploiements
+suivants : un cron tourne chaque minute, vérifie si la branche distante a
+bougé, et si oui fait `git pull` + `pm2 restart`. Les futures modifs poussées
+depuis l'IDE arrivent toutes seules sur le VPS — plus besoin de SSH manuel
+(utile quand tu n'as qu'un iPhone).
+
+À exécuter **une seule fois** sur le VPS (en SSH root, depuis Termius par
+exemple) :
+
+```bash
+cd /root/app_soldes && git pull --ff-only
+chmod +x deploy/auto-pull.sh
+sudo cp deploy/dlc-auto-pull.cron /etc/cron.d/dlc-auto-pull
+sudo chown root:root /etc/cron.d/dlc-auto-pull
+sudo chmod 644 /etc/cron.d/dlc-auto-pull
+sudo touch /var/log/dlc-auto-pull.log
+sudo chmod 640 /var/log/dlc-auto-pull.log
+
+# Test manuel : doit afficher "deploy complete" si la branche a bougé,
+# ou rester silencieux si tout est à jour.
+sudo /root/app_soldes/deploy/auto-pull.sh
+```
+
+Vérifier ensuite :
+```bash
+tail -f /var/log/dlc-auto-pull.log
+# Pousse un commit depuis ton poste/iPhone, attends ≤60 s, tu dois voir
+# une ligne "deploying ... → ..." puis "pm2 restarted (dlc-manager)".
+```
+
+Pour changer de branche suivie (par exemple passer sur `main` après merge),
+édite la ligne `BRANCH=...` dans `/etc/cron.d/dlc-auto-pull`.
+
+Garde-fous intégrés au script :
+- `flock` empêche deux exécutions simultanées
+- ne touche pas à un working tree sale (commits locaux non poussés sur le VPS)
+- silencieux si rien à faire (pas de spam dans les logs)
+- recharge `.env` automatiquement avant `pm2 restart`
+
+---
+
 ## Dette technique à traiter ensuite
 
 1. **`index-dev.js` en production** : base en mémoire → toutes les données
