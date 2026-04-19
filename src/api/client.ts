@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SERVER_URL_KEY = 'dlc_server_url';
-const DEFAULT_SERVER_URL = 'http://localhost:3000';
+// Build-time default. Overridden per build via eas.json env (EXPO_PUBLIC_*),
+// then by anything the user sets at runtime in Settings → Synchronisation.
+const DEFAULT_SERVER_URL =
+  process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL || 'http://localhost:3000';
 
 let cachedServerUrl: string | null = null;
 

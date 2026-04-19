@@ -13,7 +13,16 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gaerebut.dlcmanager",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "L'app a besoin de la caméra pour scanner les codes-barres.",
+        "NSPhotoLibraryUsageDescription": "L'app a besoin d'accéder aux photos pour ajouter des images aux produits.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +30,10 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.gaerebut.dlcmanager",
+      "versionCode": 1,
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
