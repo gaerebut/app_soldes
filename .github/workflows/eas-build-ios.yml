@@ -1,0 +1,59 @@
+name: EAS iOS Build
+
+# Trigger from the GitHub web UI (Actions tab → "EAS iOS Build" → "Run workflow"),
+# so an iPhone-only workflow can build without any local terminal.
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Build profile (eas.json)"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
+      submit:
+        description: "Auto-submit to TestFlight after build"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build iOS (${{ inputs.profile }})
+        run: |
+          if [ "${{ inputs.submit }}" = "true" ]; then
+            eas build --platform ios --profile ${{ inputs.profile }} --non-interactive --auto-submit
+          else
+            eas build --platform ios --profile ${{ inputs.profile }} --non-interactive
+          fi
+        env:
+          # EAS uses these to provision iOS certificates and profiles in CI.
+          EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+          EXPO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.EXPO_APPLE_APP_SPECIFIC_PASSWORD }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.EXPO_APPLE_TEAM_ID }}
