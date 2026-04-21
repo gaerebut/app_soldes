@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SERVER_URL_KEY = 'dlc_server_url';
-const DEFAULT_SERVER_URL = 'http://localhost:3000';
+const DEFAULT_SERVER_URL = 'http://187.124.215.103:3000';
 
 let cachedServerUrl: string | null = null;
 

@@ -29,7 +29,6 @@ import { setServerUrl } from '../src/api/client';
 export default function SettingsScreen() {
   const router = useRouter();
   const { logout } = useAuth();
-  const [syncing, setSyncing] = useState(false);
   const [aisles, setAisles] = useState<AisleWithProductCount[]>([]);
   const [showAisleModal, setShowAisleModal] = useState(false);
   const [editingAisle, setEditingAisle] = useState<AisleWithProductCount | null>(null);
@@ -42,7 +41,7 @@ export default function SettingsScreen() {
   const [tempMinute, setTempMinute] = useState('00');
   const [showSyncStatus, setShowSyncStatus] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
-  const [serverUrl, setServerUrlState] = useState('http://localhost:3000');
+  const [serverUrl, setServerUrlState] = useState('http://187.124.215.103:3000');
 
   useFocusEffect(
     useCallback(() => {
@@ -54,8 +53,15 @@ export default function SettingsScreen() {
 
   const loadServerUrl = async () => {
     const url = await AsyncStorage.getItem('dlc_server_url');
-    if (url) {
+    const DEFAULT_URL = 'http://187.124.215.103:3000';
+
+    if (url && url !== 'http://localhost:3000') {
+      // Si une URL valide existe et ce n'est pas l'ancienne localhost, l'utiliser
       setServerUrlState(url);
+    } else {
+      // Sinon, utiliser la nouvelle URL par défaut et la sauvegarder
+      setServerUrlState(DEFAULT_URL);
+      await AsyncStorage.setItem('dlc_server_url', DEFAULT_URL);
     }
   };
 
@@ -208,18 +214,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleResync = async () => {
-    setSyncing(true);
-    try {
-      await apiClient.fullSync();
-      Alert.alert('Succes', 'Synchronisation effectuee avec le serveur.');
-    } catch (err) {
-      Alert.alert('Erreur', 'Impossible de synchroniser avec le serveur.');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const handleLogout = () => {
     Alert.alert(
       'Deconnexion',
@@ -348,31 +342,6 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={16} color={Colors.textLight} />
           </TouchableOpacity>
         )}
-      </View>
-
-      {/* Sync Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Synchronisation</Text>
-        <Text style={styles.sectionDesc}>
-          Resynchronise toutes les informations de l'appareil (photos, dates, produits, etc).
-        </Text>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonPrimary, syncing && styles.buttonDisabled]}
-          onPress={handleResync}
-          disabled={syncing}
-        >
-          {syncing ? (
-            <>
-              <ActivityIndicator color="#FFF" size="small" />
-              <Text style={styles.buttonText}>Synchronisation...</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="sync-outline" size={18} color="#FFF" />
-              <Text style={styles.buttonText}>Resynchroniser</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </View>
 
       {/* Multi-Device Sync Section */}
@@ -526,7 +495,7 @@ export default function SettingsScreen() {
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="http://localhost:3000"
+              placeholder="http://187.124.215.103:3000"
               placeholderTextColor={Colors.textLight}
               value={serverUrl}
               onChangeText={setServerUrlState}

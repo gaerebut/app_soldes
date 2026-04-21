@@ -47,64 +47,6 @@
             overflow: hidden;
         }
 
-        /* Sidebar Stats */
-        .sidebar {
-            width: 280px;
-            background: white;
-            border-right: 1px solid #eee;
-            padding: 20px;
-            overflow-y: auto;
-            flex-shrink: 0;
-        }
-
-        .stat-box {
-            text-align: center;
-            padding: 15px;
-            margin-bottom: 15px;
-            background: linear-gradient(135deg, #0D9488 0%, #0D7377 100%);
-            border-radius: 8px;
-            color: white;
-        }
-
-        .stat-number {
-            font-size: 32px;
-            font-weight: 700;
-            margin: 10px 0;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            text-transform: uppercase;
-            opacity: 0.9;
-        }
-
-        .refresh-time {
-            font-size: 11px;
-            color: #999;
-            text-align: center;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #eee;
-        }
-
-        .refresh-btn {
-            width: 100%;
-            background: #0D9488;
-            color: white;
-            border: none;
-            padding: 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            margin-top: 15px;
-            font-size: 13px;
-            transition: background 0.3s;
-        }
-
-        .refresh-btn:hover {
-            background: #0D7377;
-        }
-
         /* Tabs */
         .tabs-container {
             flex: 1;
@@ -140,6 +82,23 @@
         .tab-button.active {
             color: #0D9488;
             border-bottom-color: #0D9488;
+        }
+
+        .tab-count {
+            background: #0D9488;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 4px;
+            display: inline-block;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .tab-button.active .tab-count {
+            background: #0D7377;
         }
 
         .tabs-content {
@@ -359,6 +318,28 @@
             color: white;
         }
 
+        .btn-move {
+            background: #f0f0f0;
+            color: #333;
+            border: none;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .btn-move:hover {
+            background: #0D9488;
+            color: white;
+        }
+
+        .btn-move:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -383,10 +364,6 @@
         }
 
         @media (max-width: 1024px) {
-            .sidebar {
-                width: 250px;
-            }
-
             .grid-2 {
                 grid-template-columns: 1fr;
             }
@@ -398,17 +375,6 @@
         }
 
         @media (max-width: 768px) {
-            .main-content {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-                border-right: none;
-                border-bottom: 1px solid #eee;
-                padding: 15px;
-            }
-
             .tabs-header {
                 flex-wrap: wrap;
             }
@@ -426,21 +392,14 @@
     </header>
 
     <div class="main-content">
-        <!-- SIDEBAR STATS -->
-        <div class="sidebar">
-            <div id="stats"></div>
-            <button class="refresh-btn" onclick="loadAllData()">🔄 Actualiser</button>
-            <div class="refresh-time" id="refreshTime"></div>
-        </div>
-
         <!-- TABS CONTENT -->
         <div class="tabs-container">
             <div class="tabs-header">
-                <button class="tab-button active" onclick="switchTab('appareils')">📱 Appareils</button>
-                <button class="tab-button" onclick="switchTab('rayons')">🏪 Rayons</button>
-                <button class="tab-button" onclick="switchTab('produits')">📦 Produits</button>
-                <button class="tab-button" onclick="switchTab('verifications')">✅ Vérifications</button>
-                <button class="tab-button" onclick="switchTab('historique')">🔄 Historique</button>
+                <button class="tab-button active" onclick="switchTab('appareils')">📱 Appareils <span class="tab-count" id="count-appareils">0</span></button>
+                <button class="tab-button" onclick="switchTab('rayons')">🏪 Rayons <span class="tab-count" id="count-rayons">0</span></button>
+                <button class="tab-button" onclick="switchTab('produits')">📦 Produits <span class="tab-count" id="count-produits">0</span></button>
+                <button class="tab-button" onclick="switchTab('verifications')">✅ Vérifications <span class="tab-count" id="count-verifications">0</span></button>
+                <button class="tab-button" onclick="switchTab('historique')">🔄 Historique <span class="tab-count" id="count-historique">0</span></button>
             </div>
 
             <div class="tabs-content">
@@ -499,18 +458,6 @@
             if (event && event.target) {
                 event.target.classList.add('active');
             }
-
-            // Update URL with anchor
-            window.history.pushState(null, null, `#${tabName}`);
-        }
-
-        function restoreTabFromURL() {
-            const hash = window.location.hash.substring(1);
-            const validTabs = ['appareils', 'rayons', 'produits', 'verifications', 'historique'];
-
-            if (hash && validTabs.includes(hash)) {
-                switchTab(hash);
-            }
         }
 
         async function loadAllData() {
@@ -520,18 +467,32 @@
                 const aisles = await fetch('/api/aisles').then(r => r.json());
                 const history = await fetch('/api/sync/history').then(r => r.json());
 
-                displayStats(fullSync, devices, aisles);
                 displayDevices(devices);
                 displayAisles(aisles);
                 displayProducts(fullSync.products);
                 displayChecks(fullSync.checks);
                 displayHistory(history);
+                updateTabCounts(devices, aisles, fullSync, history);
 
                 lastRefresh = new Date();
                 updateRefreshTime();
             } catch (error) {
                 console.error('Erreur:', error);
             }
+        }
+
+        function updateTabCounts(devices, aisles, fullSync, history) {
+            const deviceCount = devices.devices ? devices.devices.length : 0;
+            const aisleCount = aisles ? aisles.length : 0;
+            const productCount = fullSync.products ? fullSync.products.length : 0;
+            const checkCount = fullSync.checks ? fullSync.checks.length : 0;
+            const historyCount = history.history ? history.history.length : 0;
+
+            document.getElementById('count-appareils').textContent = deviceCount;
+            document.getElementById('count-rayons').textContent = aisleCount;
+            document.getElementById('count-produits').textContent = productCount;
+            document.getElementById('count-verifications').textContent = checkCount;
+            document.getElementById('count-historique').textContent = historyCount;
         }
 
         function updateRefreshTime() {
@@ -608,7 +569,11 @@
             }
 
             let html = '';
-            for (const aisle of aislelist) {
+            for (let i = 0; i < aislelist.length; i++) {
+                const aisle = aislelist[i];
+                const isFirst = i === 0;
+                const isLast = i === aislelist.length - 1;
+
                 html += `
                     <div class="aisle-item" draggable="true" data-id="${aisle.id}" data-order="${aisle.order_index}">
                         <div class="aisle-content">
@@ -622,6 +587,8 @@
                             </div>
                         </div>
                         <div class="aisle-buttons">
+                            <button class="btn-move" onclick="moveAisleUp(${aisle.id})" ${isFirst ? 'disabled' : ''}>⬆️</button>
+                            <button class="btn-move" onclick="moveAisleDown(${aisle.id})" ${isLast ? 'disabled' : ''}>⬇️</button>
                             <button class="btn-delete" onclick="deleteAisle(${aisle.id})">🗑️ Supprimer</button>
                         </div>
                     </div>
@@ -629,6 +596,7 @@
             }
             container.innerHTML = html;
             setupDragAndDrop();
+            updateAisleButtonStates();
         }
 
         function displayProducts(products) {
@@ -745,28 +713,122 @@
         }
 
         function swapAisles(fromItem, toItem) {
-            const fromOrder = parseInt(fromItem.dataset.order);
-            const toOrder = parseInt(toItem.dataset.order);
-            const fromId = parseInt(fromItem.dataset.id);
-            const toId = parseInt(toItem.dataset.id);
-
-            // Swap orders visually
-            fromItem.dataset.order = toOrder;
-            toItem.dataset.order = fromOrder;
-            fromItem.querySelector('.aisle-order').textContent = `Ordre: ${toOrder}`;
-            toItem.querySelector('.aisle-order').textContent = `Ordre: ${fromOrder}`;
-
-            // Reorder in DOM
             const parent = fromItem.parentNode;
-            if (fromOrder < toOrder) {
+
+            // Déplacer l'élément dans le DOM
+            if (parseInt(fromItem.dataset.order) < parseInt(toItem.dataset.order)) {
                 toItem.parentNode.insertBefore(fromItem, toItem.nextSibling);
             } else {
                 toItem.parentNode.insertBefore(fromItem, toItem);
             }
 
-            // Update on server
-            updateAisleOrder(fromId, toOrder);
-            updateAisleOrder(toId, fromOrder);
+            // Renuméroter TOUS les rayons selon leur nouvelle position
+            const allItems = document.querySelectorAll('.aisle-item');
+            let order = 1;
+            for (const item of allItems) {
+                const id = parseInt(item.dataset.id);
+                item.dataset.order = order;
+                item.querySelector('.aisle-order').textContent = `Ordre: ${order}`;
+
+                // Mettre à jour sur le serveur
+                updateAisleOrder(id, order);
+                order++;
+            }
+
+            // Mettre à jour les états des boutons
+            updateAisleButtonStates();
+        }
+
+        function updateAisleButtonStates() {
+            const allItems = document.querySelectorAll('.aisle-item');
+
+            allItems.forEach((item, index) => {
+                const buttons = item.querySelectorAll('.btn-move');
+                const upBtn = buttons[0];
+                const downBtn = buttons[1];
+
+                // Désactiver le bouton up si c'est le premier
+                if (index === 0) {
+                    upBtn.disabled = true;
+                } else {
+                    upBtn.disabled = false;
+                }
+
+                // Désactiver le bouton down si c'est le dernier
+                if (index === allItems.length - 1) {
+                    downBtn.disabled = true;
+                } else {
+                    downBtn.disabled = false;
+                }
+            });
+        }
+
+        async function moveAisleUp(id) {
+            const allItems = document.querySelectorAll('.aisle-item');
+            let currentIndex = -1;
+
+            // Trouver l'index de l'aisle actuel
+            for (let i = 0; i < allItems.length; i++) {
+                if (parseInt(allItems[i].dataset.id) === id) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            // Ne rien faire si c'est le premier ou si non trouvé
+            if (currentIndex <= 0) return;
+
+            // Swapper avec le précédent
+            const currentItem = allItems[currentIndex];
+            const previousItem = allItems[currentIndex - 1];
+            currentItem.parentNode.insertBefore(currentItem, previousItem);
+
+            // Renuméroter tous les rayons
+            let order = 1;
+            for (const item of document.querySelectorAll('.aisle-item')) {
+                const itemId = parseInt(item.dataset.id);
+                item.dataset.order = order;
+                item.querySelector('.aisle-order').textContent = `Ordre: ${order}`;
+                updateAisleOrder(itemId, order);
+                order++;
+            }
+
+            // Mettre à jour les états des boutons
+            updateAisleButtonStates();
+        }
+
+        async function moveAisleDown(id) {
+            const allItems = document.querySelectorAll('.aisle-item');
+            let currentIndex = -1;
+
+            // Trouver l'index de l'aisle actuel
+            for (let i = 0; i < allItems.length; i++) {
+                if (parseInt(allItems[i].dataset.id) === id) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            // Ne rien faire si c'est le dernier ou si non trouvé
+            if (currentIndex < 0 || currentIndex >= allItems.length - 1) return;
+
+            // Swapper avec le suivant
+            const currentItem = allItems[currentIndex];
+            const nextItem = allItems[currentIndex + 1];
+            currentItem.parentNode.insertBefore(nextItem, currentItem);
+
+            // Renuméroter tous les rayons
+            let order = 1;
+            for (const item of document.querySelectorAll('.aisle-item')) {
+                const itemId = parseInt(item.dataset.id);
+                item.dataset.order = order;
+                item.querySelector('.aisle-order').textContent = `Ordre: ${order}`;
+                updateAisleOrder(itemId, order);
+                order++;
+            }
+
+            // Mettre à jour les états des boutons
+            updateAisleButtonStates();
         }
 
         async function addAisle() {
@@ -894,7 +956,6 @@
 
         // Charger au démarrage
         window.addEventListener('load', () => {
-            restoreTabFromURL();
             loadAllData();
 
             // Event listener pour la touche Entrée dans le champ d'ajout de rayon
@@ -908,9 +969,6 @@
                 });
             }
         });
-
-        // Gérer les changements d'ancre (boutons précédent/suivant)
-        window.addEventListener('hashchange', restoreTabFromURL);
 
         // Auto-refresh toutes les 30 secondes
         setInterval(loadAllData, 30000);
