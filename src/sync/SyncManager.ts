@@ -13,7 +13,7 @@ import ConflictResolver from './ConflictResolver';
 import { SyncChange, SyncMetadata, SyncPushRequest, SyncPushResponse, SyncPullResponse } from './types';
 
 const SYNC_METADATA_KEY = 'dlc_sync_metadata';
-const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const SYNC_INTERVAL = 5 * 1000; // 5 seconds
 
 class SyncManager {
   private static instance: SyncManager;

@@ -4,15 +4,15 @@
  */
 
 export const SYNC_CONFIG = {
-  // Sync interval (ms) - Default: 5 minutes
-  SYNC_INTERVAL: 5 * 60 * 1000,
+  // Sync interval (ms) - Default: 5 seconds
+  SYNC_INTERVAL: 5 * 1000,
 
   // Strategy for conflict resolution
   CONFLICT_STRATEGY: 'lww' as const, // 'lww' = Last-Write-Wins
 
   // Server configuration
   SERVER: {
-    DEFAULT_URL: 'http://187.124.215.103:3000',
+    DEFAULT_URL: 'http://187.124.215.103',
   },
 
   // Sync behavior

@@ -41,7 +41,7 @@ export default function SettingsScreen() {
   const [tempMinute, setTempMinute] = useState('00');
   const [showSyncStatus, setShowSyncStatus] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
-  const [serverUrl, setServerUrlState] = useState('http://187.124.215.103:3000');
+  const [serverUrl, setServerUrlState] = useState('http://187.124.215.103');
 
   useFocusEffect(
     useCallback(() => {
@@ -53,7 +53,7 @@ export default function SettingsScreen() {
 
   const loadServerUrl = async () => {
     const url = await AsyncStorage.getItem('dlc_server_url');
-    const DEFAULT_URL = 'http://187.124.215.103:3000';
+    const DEFAULT_URL = 'http://187.124.215.103';
 
     if (url && url !== 'http://localhost:3000') {
       // Si une URL valide existe et ce n'est pas l'ancienne localhost, l'utiliser
@@ -495,7 +495,7 @@ export default function SettingsScreen() {
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="http://187.124.215.103:3000"
+              placeholder="http://187.124.215.103"
               placeholderTextColor={Colors.textLight}
               value={serverUrl}
               onChangeText={setServerUrlState}

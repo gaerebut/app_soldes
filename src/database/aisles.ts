@@ -1,4 +1,5 @@
 import { getDatabase } from './db';
+import SyncManager from '../sync/SyncManager';
 
 export interface Aisle {
   id: number;
@@ -60,7 +61,21 @@ export async function createAisle(name: string): Promise<number> {
     'INSERT INTO aisles (name, order_index) VALUES (?, ?)',
     [name, nextOrder]
   );
-  return insertResult.lastInsertRowId;
+
+  const aisleId = insertResult.lastInsertRowId;
+
+  // Enqueue the change for sync
+  try {
+    const syncManager = SyncManager.getInstance();
+    await syncManager.enqueueChange('aisles', 'CREATE', aisleId, {
+      name,
+      order_index: nextOrder,
+    });
+  } catch (error) {
+    console.error('Failed to enqueue aisle creation:', error);
+  }
+
+  return aisleId;
 }
 
 // Update aisle name
@@ -68,6 +83,14 @@ export async function updateAisleName(id: number, name: string): Promise<void> {
   const db = await getDatabase();
   if (!db) return;
   await db.runAsync('UPDATE aisles SET name = ? WHERE id = ?', [name, id]);
+
+  // Enqueue the change for sync
+  try {
+    const syncManager = SyncManager.getInstance();
+    await syncManager.enqueueChange('aisles', 'UPDATE', id, { name });
+  } catch (error) {
+    console.error('Failed to enqueue aisle update:', error);
+  }
 }
 
 // Delete aisle and transfer products to "unnamed" aisle
@@ -113,17 +136,36 @@ export async function deleteAisleWithTransfer(id: number): Promise<void> {
 
   // Delete the aisle
   await db.runAsync('DELETE FROM aisles WHERE id = ?', [id]);
+
+  // Enqueue the change for sync
+  try {
+    const syncManager = SyncManager.getInstance();
+    await syncManager.enqueueChange('aisles', 'DELETE', id, {});
+  } catch (error) {
+    console.error('Failed to enqueue aisle deletion:', error);
+  }
 }
 
 // Reorder aisles (drag and drop)
 export async function reorderAisles(aisleIds: number[]): Promise<void> {
   const db = await getDatabase();
   if (!db) return;
+  const syncManager = SyncManager.getInstance();
+
   for (let i = 0; i < aisleIds.length; i++) {
     await db.runAsync(
       'UPDATE aisles SET order_index = ? WHERE id = ?',
       [i, aisleIds[i]]
     );
+
+    // Enqueue the change for sync
+    try {
+      await syncManager.enqueueChange('aisles', 'UPDATE', aisleIds[i], {
+        order_index: i,
+      });
+    } catch (error) {
+      console.error('Failed to enqueue aisle reorder:', error);
+    }
   }
 }
 

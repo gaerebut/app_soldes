@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SERVER_URL_KEY = 'dlc_server_url';
-const DEFAULT_SERVER_URL = 'http://187.124.215.103:3000';
+const DEFAULT_SERVER_URL = 'http://187.124.215.103';
 
 let cachedServerUrl: string | null = null;
 
@@ -125,7 +125,7 @@ export const apiClient = {
   },
 
   // Sync - Legacy endpoints (kept for compatibility)
-  async fullSync(): Promise<{ products: any[]; checks: any[]; timestamp: string }> {
+  async fullSync(): Promise<{ products: any[]; checks: any[]; aisles: any[]; timestamp: string }> {
     const res = await authFetch('/api/sync/full');
     if (!res.ok) throw new Error('Failed to sync');
     return res.json();

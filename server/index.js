@@ -12,7 +12,7 @@ const DeviceRegistry = require('./deviceRegistry');
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const PORT = 3000;
+const PORT = 80;
 const JWT_SECRET = 'dlc-manager-secret-key-change-in-production';
 const DB_PATH = path.join(__dirname, 'dlc-manager.db');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
