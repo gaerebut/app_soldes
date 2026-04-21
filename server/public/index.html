@@ -24,7 +24,7 @@
         }
 
         header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0D9488 0%, #0D7377 100%);
             color: white;
             padding: 15px 30px;
             flex-shrink: 0;
@@ -61,7 +61,7 @@
             text-align: center;
             padding: 15px;
             margin-bottom: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0D9488 0%, #0D7377 100%);
             border-radius: 8px;
             color: white;
         }
@@ -89,7 +89,7 @@
 
         .refresh-btn {
             width: 100%;
-            background: #667eea;
+            background: #0D9488;
             color: white;
             border: none;
             padding: 10px;
@@ -102,7 +102,7 @@
         }
 
         .refresh-btn:hover {
-            background: #764ba2;
+            background: #0D7377;
         }
 
         /* Tabs */
@@ -138,8 +138,8 @@
         }
 
         .tab-button.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
+            color: #0D9488;
+            border-bottom-color: #0D9488;
         }
 
         .tabs-content {
@@ -202,7 +202,7 @@
 
         .device-item {
             padding: 12px;
-            border-left: 3px solid #667eea;
+            border-left: 3px solid #0D9488;
             background: #f9f9f9;
             border-radius: 4px;
             font-size: 12px;
@@ -291,7 +291,7 @@
         }
 
         .aisle-item:hover {
-            border-color: #667eea;
+            border-color: #0D9488;
             background: #f9f9f9;
             box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
         }
@@ -302,7 +302,7 @@
         }
 
         .aisle-item.drag-over {
-            border-color: #667eea;
+            border-color: #0D9488;
             background: #f5f5ff;
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
@@ -454,8 +454,8 @@
                 <div id="rayons" class="tab-pane">
                     <div class="section-title">🏪 Rayons</div>
                     <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                        <input type="text" id="aisleNameInput" placeholder="Nom du rayon..." style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" onkeypress="if(event.key === 'Enter') addAisle()">
-                        <button onclick="addAisle()" style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px;">➕ Ajouter</button>
+                        <input type="text" id="aisleNameInput" placeholder="Nom du rayon..." style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                        <button onclick="addAisle()" style="background: #0D9488; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px;">➕ Ajouter</button>
                     </div>
                     <div id="aislesList" style="flex: 1; overflow-y: auto;"></div>
                 </div>
@@ -780,6 +780,11 @@
 
             try {
                 const token = await getToken();
+
+                // Récupérer le nombre de rayons existants pour l'ordre
+                const aisList = document.querySelectorAll('.aisle-item');
+                const nextOrder = aisList.length + 1;
+
                 const response = await fetch('/api/aisles', {
                     method: 'POST',
                     headers: {
@@ -788,7 +793,7 @@
                     },
                     body: JSON.stringify({
                         name,
-                        order_index: 999 // Will be reordered
+                        order_index: nextOrder
                     })
                 });
 
