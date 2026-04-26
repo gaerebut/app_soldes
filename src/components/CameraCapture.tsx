@@ -74,6 +74,7 @@ export default function CameraCapture({ visible, onCapture, onClose }: CameraCap
           ref={cameraRef}
           style={styles.camera}
           facing="back"
+          zoom={0}
         />
 
         {/* Close button */}
