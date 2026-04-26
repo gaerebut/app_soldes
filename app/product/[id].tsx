@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors, Categories } from '../../src/constants/theme';
 import { Product, updateProduct, getCheckHistory, updateProductDLC, getProductById } from '../../src/database/products';
+import { apiClient } from '../../src/api/client';
 import { formatDateShort, formatDateFR, getTodayStr } from '../../src/utils/date';
 import { getAllAisles, Aisle } from '../../src/database/aisles';
 import { useRealtimeRefresh } from '../../src/realtime/useRealtimeRefresh';
@@ -554,7 +555,20 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
             onPress={async () => {
               if (product) {
                 const finalBarcode = barcode.trim();
-                await updateProduct(product.id, name, category, finalBarcode || undefined, imageUri ?? undefined, selectedAisleId ?? undefined);
+                let finalImageUri = imageUri;
+
+                // If image changed and is a local file, upload it
+                if (imageUri && imageUri !== product.image_uri && imageUri.startsWith('file://')) {
+                  try {
+                    const uploadResult = await apiClient.products.uploadPhoto(product.id, imageUri);
+                    finalImageUri = uploadResult?.image_uri || imageUri;
+                  } catch (error) {
+                    console.error('Photo upload error (non-critical):', error);
+                    // Continue with local URI if upload fails
+                  }
+                }
+
+                await updateProduct(product.id, name, category, finalBarcode || undefined, finalImageUri ?? undefined, selectedAisleId ?? undefined);
 
                 // Update barcode cache
                 if (finalBarcode) {

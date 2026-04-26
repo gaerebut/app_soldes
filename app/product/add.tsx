@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors } from '../../src/constants/theme';
 import { addProduct } from '../../src/database/products';
+import { apiClient } from '../../src/api/client';
 import { getTodayStr, formatDateFR } from '../../src/utils/date';
 import { fetchProductByEAN } from '../../src/utils/openfoodfacts';
 import Calendar from '../../src/components/Calendar';
@@ -124,23 +125,42 @@ export default function AddProductScreen() {
       Alert.alert('Photo requise', 'Veuillez ajouter une photo du produit.');
       return;
     }
-    const result = await addProduct(trimmed, 'Autre', barcode.trim() || undefined, imageUri, expiryDate, selectedAisleId ?? undefined);
 
-    // Update barcode cache
-    const finalBarcode = barcode.trim();
-    if (finalBarcode) {
-      const cache = await AsyncStorage.getItem(BARCODE_CACHE_KEY)
-        .then((str) => (str ? JSON.parse(str) : {}))
-        .catch(() => ({}));
-      cache[finalBarcode] = result;
-      await AsyncStorage.setItem(BARCODE_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
-    }
+    try {
+      // 1. Create product without photo
+      const result = await addProduct(trimmed, 'Autre', barcode.trim() || undefined, undefined, expiryDate, selectedAisleId ?? undefined);
 
-    if (selectedAisleId) {
-      await saveLastSelectedAisle(selectedAisleId);
+      // 2. Upload photo
+      try {
+        const photoResult = await apiClient.products.uploadPhoto(result, imageUri);
+        // Photo uploaded, update product with photo URL
+        if (photoResult?.image_uri) {
+          await apiClient.products.update(result, { image_uri: photoResult.image_uri });
+        }
+      } catch (photoError) {
+        console.error('Photo upload error (non-critical):', photoError);
+        // Continue even if photo fails
+      }
+
+      // Update barcode cache
+      const finalBarcode = barcode.trim();
+      if (finalBarcode) {
+        const cache = await AsyncStorage.getItem(BARCODE_CACHE_KEY)
+          .then((str) => (str ? JSON.parse(str) : {}))
+          .catch(() => ({}));
+        cache[finalBarcode] = result;
+        await AsyncStorage.setItem(BARCODE_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
+      }
+
+      if (selectedAisleId) {
+        await saveLastSelectedAisle(selectedAisleId);
+      }
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (error) {
+      console.error('Error saving product:', error);
+      Alert.alert('Erreur', 'Impossible de sauvegarder le produit');
     }
-    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
   };
 
   return (
