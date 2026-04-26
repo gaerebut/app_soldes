@@ -39,7 +39,7 @@ export default function ScannerScreen() {
       initialZoomRef.current = zoomRef.current;
     })
     .onUpdate((e) => {
-      const next = Math.min(2, Math.max(0, initialZoomRef.current + (e.scale - 1) * 0.35));
+      const next = Math.min(2, Math.max(0, initialZoomRef.current + (e.scale - 1) * 0.15));
       setZoom(next);
       zoomRef.current = next;
     })
