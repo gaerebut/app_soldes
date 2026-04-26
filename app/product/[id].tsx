@@ -251,7 +251,19 @@ export default function EditProductScreen() {
           source.copy(dest);
           const prod = productDataCache.get(currentId)?.product;
           if (prod) {
-            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, dest.uri, prod.aisle_id);
+            let finalImageUri = dest.uri;
+            // Upload photo to server
+            try {
+              const uploadResult = await apiClient.products.uploadPhoto(prod.id, dest.uri);
+              finalImageUri = uploadResult?.image_uri || dest.uri;
+            } catch (error) {
+              console.error('Photo upload error (non-critical):', error);
+              // Continue with local URI if upload fails
+            }
+            // Update local state
+            setImageUri(finalImageUri);
+            // Update product in database
+            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri, prod.aisle_id);
             productDataCache.delete(currentId);
             fetchProductData(currentId);
           }
@@ -445,20 +457,28 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
           <Text style={styles.label}>Photo du produit</Text>
           <TouchableOpacity
             style={styles.photoContainer}
-            onPress={() => {}}
+            onPress={() => isActive && setShowCamera(true)}
             activeOpacity={0.7}
             disabled={!isActive}
           >
             {imageUri ? (
               <>
-                <Text style={{ fontSize: 12, color: '#333', textAlign: 'center', paddingHorizontal: 10 }}>
-                  {imageUri}
-                </Text>
+                {imageUri.startsWith('http') ? (
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                <View style={styles.photoOverlay}>
+                  <Ionicons name="camera" size={18} color="#FFF" />
+                  <Text style={styles.photoOverlayText}>Remplacer la photo</Text>
+                </View>
               </>
             ) : (
               <View style={styles.photoPlaceholder}>
                 <Ionicons name="camera-outline" size={40} color={Colors.textLight} />
-                <Text style={styles.photoPlaceholderText}>Prendre une photo</Text>
+                <Text style={styles.photoPlaceholderText}>Ajouter une photo</Text>
               </View>
             )}
           </TouchableOpacity>
