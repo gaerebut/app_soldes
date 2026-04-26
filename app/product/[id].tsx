@@ -19,23 +19,43 @@ import {
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors, Categories } from '../../src/constants/theme';
-import { Product, updateProduct, getCheckHistory, updateProductDLC } from '../../src/database/products';
-import { getDatabase } from '../../src/database/db';
+import { Product, updateProduct, getCheckHistory, updateProductDLC, getProductById } from '../../src/database/products';
 import { formatDateShort, formatDateFR, getTodayStr } from '../../src/utils/date';
 import { getAllAisles, Aisle } from '../../src/database/aisles';
+import { useRealtimeRefresh } from '../../src/realtime/useRealtimeRefresh';
 import CameraCapture from '../../src/components/CameraCapture';
 import Calendar from '../../src/components/Calendar';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const BARCODE_CACHE_KEY = 'dlc_barcode_cache';
 const productDataCache = new Map<number, { product: Product; history: any[] }>();
+
+async function downloadAndCacheImage(imageUrl: string): Promise<string | null> {
+  try {
+    const dir = new Directory(Paths.document, 'product_images');
+    if (!dir.exists) await dir.create();
+
+    const fileName = 'off_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9) + '.jpg';
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+
+    const arrayBuffer = await response.arrayBuffer();
+    const file = new ExpoFile(dir, fileName);
+    file.write(new Uint8Array(arrayBuffer));
+    return file.uri;
+  } catch (error) {
+    console.error('Failed to cache image:', error);
+    return null;
+  }
+}
 
 async function fetchProductData(id: number) {
   if (productDataCache.has(id)) return productDataCache.get(id)!;
-  const db = await getDatabase();
-  const p = await db.getFirstAsync<Product>('SELECT * FROM products WHERE id = ?', [id]);
+  const p = await getProductById(id);
   const history = await getCheckHistory(id, 1);
   if (p) {
     productDataCache.set(id, { product: p, history });
@@ -122,6 +142,14 @@ export default function EditProductScreen() {
     fetchProductData(currentId);
     if (nextId) fetchProductData(nextId);
   }, [currentId, prevId, nextId]);
+
+  useRealtimeRefresh(
+    ['products:changed', 'checks:changed', 'aisles:changed'],
+    useCallback(() => {
+      productDataCache.delete(currentId);
+      fetchProductData(currentId);
+    }, [currentId])
+  );
 
   const animateAndSwipe = (direction: 'left' | 'right', newId: number) => {
     const exitValue = direction === 'left' ? -SCREEN_WIDTH : SCREEN_WIDTH;
@@ -314,7 +342,6 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
       setBarcode(p.barcode ?? '');
       setImageUri(p.image_uri);
       setSelectedAisleId(p.aisle_id);
-      setIsRupture(data.history.length > 0 && data.history[0].status === 'rupture');
       let dlc = getTodayStr();
       if (data.history.length > 0 && data.history[0].next_expiry_date) {
         dlc = data.history[0].next_expiry_date;
@@ -330,13 +357,11 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
   // Reset all state synchronously when id changes - BEFORE render
   useLayoutEffect(() => {
     const cached = productDataCache.get(id);
-    setProduct(cached?.product ?? null);
     setName(cached?.product?.name ?? '');
     setCategory(cached?.product?.category ?? 'Autre');
     setBarcode(cached?.product?.barcode ?? '');
     setImageUri(cached?.product?.image_uri ?? null);
     setSelectedAisleId(cached?.product?.aisle_id ?? null);
-    setIsRupture(cached?.history && cached.history.length > 0 && cached.history[0].status === 'rupture');
 
     // Then load fresh data
     loadProduct();
@@ -352,7 +377,12 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
 
           if (result?.imageUrl) {
             console.log('✓ Image URL found:', result.imageUrl);
-            setImageUri(result.imageUrl);
+
+            // Download and cache image locally
+            const localImagePath = await downloadAndCacheImage(result.imageUrl);
+            const finalImageUri = localImagePath || result.imageUrl;
+
+            setImageUri(finalImageUri);
 
             if (result.name && !name) {
               setName(result.name);
@@ -366,13 +396,13 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
                 name || product.name,
                 category || product.category,
                 barcode.trim() || undefined,
-                result.imageUrl,
+                finalImageUri,
                 selectedAisleId || product.aisle_id || undefined
               );
               // Update cache with new image
               const cached = productDataCache.get(product.id);
               if (cached) {
-                cached.product.image_uri = result.imageUrl;
+                cached.product.image_uri = finalImageUri;
                 productDataCache.set(product.id, cached);
               }
             }
@@ -523,7 +553,18 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
             style={styles.saveButton}
             onPress={async () => {
               if (product) {
-                await updateProduct(product.id, name, category, barcode.trim() || undefined, imageUri ?? undefined, selectedAisleId ?? undefined);
+                const finalBarcode = barcode.trim();
+                await updateProduct(product.id, name, category, finalBarcode || undefined, imageUri ?? undefined, selectedAisleId ?? undefined);
+
+                // Update barcode cache
+                if (finalBarcode) {
+                  const cache = await AsyncStorage.getItem(BARCODE_CACHE_KEY)
+                    .then((str) => (str ? JSON.parse(str) : {}))
+                    .catch(() => ({}));
+                  cache[finalBarcode] = product.id;
+                  await AsyncStorage.setItem(BARCODE_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
+                }
+
                 productDataCache.delete(product.id);
               }
             }}

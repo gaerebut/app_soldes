@@ -12,6 +12,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../src/constants/theme';
 import { Product, getAllProducts, deleteProduct } from '../src/database/products';
+import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
 
 export default function ProductsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -28,6 +29,8 @@ export default function ProductsScreen() {
       loadProducts();
     }, [loadProducts])
   );
+
+  useRealtimeRefresh(['products:changed', 'aisles:changed'], loadProducts);
 
   const onRefresh = async () => {
     setRefreshing(true);

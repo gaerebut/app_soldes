@@ -12,7 +12,7 @@ export const SYNC_CONFIG = {
 
   // Server configuration
   SERVER: {
-    DEFAULT_URL: 'http://187.124.215.103',
+    DEFAULT_URL: 'http://192.168.1.63:3000',
   },
 
   // Sync behavior

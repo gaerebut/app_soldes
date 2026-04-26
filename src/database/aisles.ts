@@ -1,5 +1,4 @@
-import { getDatabase } from './db';
-import SyncManager from '../sync/SyncManager';
+import { apiClient } from '../api/client';
 
 export interface Aisle {
   id: number;
@@ -12,195 +11,48 @@ export interface AisleWithProductCount extends Aisle {
   productCount: number;
 }
 
-// Get all aisles ordered by order_index
 export async function getAllAisles(): Promise<Aisle[]> {
-  const db = await getDatabase();
-  if (!db) return [];
-  const aisles = await db.getAllAsync<Aisle>(
-    'SELECT * FROM aisles ORDER BY order_index ASC'
-  );
-  return aisles || [];
+  const list = await apiClient.aisles.list();
+  return list.map(({ productCount: _ignored, ...rest }: any) => rest);
 }
 
-// Get all aisles with product count
 export async function getAllAislesWithCount(): Promise<AisleWithProductCount[]> {
-  const db = await getDatabase();
-  if (!db) return [];
-  const aisles = await db.getAllAsync<AisleWithProductCount>(
-    `SELECT a.*, COUNT(p.id) as productCount
-     FROM aisles a
-     LEFT JOIN products p ON a.id = p.aisle_id
-     GROUP BY a.id
-     ORDER BY a.order_index ASC`
-  );
-  return aisles || [];
+  const list = await apiClient.aisles.list();
+  return list.filter((a: any) => a?.id != null);
 }
 
-// Get aisle by ID
 export async function getAisleById(id: number): Promise<Aisle | null> {
-  const db = await getDatabase();
-  if (!db) return null;
-  const aisle = await db.getFirstAsync<Aisle>(
-    'SELECT * FROM aisles WHERE id = ?',
-    [id]
-  );
-  return aisle || null;
+  const list = await apiClient.aisles.list();
+  return list.find((a: any) => a.id === id) ?? null;
 }
 
-// Create new aisle
 export async function createAisle(name: string): Promise<number> {
-  const db = await getDatabase();
-  if (!db) return -1;
-  // Get the highest order_index
-  const result = await db.getFirstAsync<{ max_order: number | null }>(
-    'SELECT MAX(order_index) as max_order FROM aisles'
-  );
-  const nextOrder = (result?.max_order ?? -1) + 1;
-
-  const insertResult = await db.runAsync(
-    'INSERT INTO aisles (name, order_index) VALUES (?, ?)',
-    [name, nextOrder]
-  );
-
-  const aisleId = insertResult.lastInsertRowId;
-
-  // Enqueue the change for sync
-  try {
-    const syncManager = SyncManager.getInstance();
-    await syncManager.enqueueChange('aisles', 'CREATE', aisleId, {
-      name,
-      order_index: nextOrder,
-    });
-  } catch (error) {
-    console.error('Failed to enqueue aisle creation:', error);
-  }
-
-  return aisleId;
+  const aisle = await apiClient.aisles.create(name);
+  return aisle.id;
 }
 
-// Update aisle name
 export async function updateAisleName(id: number, name: string): Promise<void> {
-  const db = await getDatabase();
-  if (!db) return;
-  await db.runAsync('UPDATE aisles SET name = ? WHERE id = ?', [name, id]);
-
-  // Enqueue the change for sync
-  try {
-    const syncManager = SyncManager.getInstance();
-    await syncManager.enqueueChange('aisles', 'UPDATE', id, { name });
-  } catch (error) {
-    console.error('Failed to enqueue aisle update:', error);
-  }
+  await apiClient.aisles.update(id, name);
 }
 
-// Delete aisle and transfer products to "unnamed" aisle
 export async function deleteAisleWithTransfer(id: number): Promise<void> {
-  const db = await getDatabase();
-  if (!db) return;
-
-  // Check if aisle has products
-  const count = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) as count FROM products WHERE aisle_id = ?',
-    [id]
-  );
-
-  if ((count?.count ?? 0) > 0) {
-    // Create or get unnamed aisle
-    const unnamedAisle = await db.getFirstAsync<{ id: number }>(
-      'SELECT id FROM aisles WHERE name = ? ORDER BY id ASC LIMIT 1',
-      ['']
-    );
-
-    let unnamedId: number;
-    if (unnamedAisle) {
-      unnamedId = unnamedAisle.id;
-    } else {
-      // Create unnamed aisle with highest order
-      const result = await db.getFirstAsync<{ max_order: number | null }>(
-        'SELECT MAX(order_index) as max_order FROM aisles'
-      );
-      const nextOrder = (result?.max_order ?? -1) + 1;
-      const insertResult = await db.runAsync(
-        'INSERT INTO aisles (name, order_index) VALUES (?, ?)',
-        ['', nextOrder]
-      );
-      unnamedId = insertResult.lastInsertRowId;
-    }
-
-    // Transfer products to unnamed aisle
-    await db.runAsync(
-      'UPDATE products SET aisle_id = ? WHERE aisle_id = ?',
-      [unnamedId, id]
-    );
-  }
-
-  // Delete the aisle
-  await db.runAsync('DELETE FROM aisles WHERE id = ?', [id]);
-
-  // Enqueue the change for sync
-  try {
-    const syncManager = SyncManager.getInstance();
-    await syncManager.enqueueChange('aisles', 'DELETE', id, {});
-  } catch (error) {
-    console.error('Failed to enqueue aisle deletion:', error);
-  }
+  await apiClient.aisles.delete(id);
 }
 
-// Reorder aisles (drag and drop)
 export async function reorderAisles(aisleIds: number[]): Promise<void> {
-  const db = await getDatabase();
-  if (!db) return;
-  const syncManager = SyncManager.getInstance();
-
-  for (let i = 0; i < aisleIds.length; i++) {
-    await db.runAsync(
-      'UPDATE aisles SET order_index = ? WHERE id = ?',
-      [i, aisleIds[i]]
-    );
-
-    // Enqueue the change for sync
-    try {
-      await syncManager.enqueueChange('aisles', 'UPDATE', aisleIds[i], {
-        order_index: i,
-      });
-    } catch (error) {
-      console.error('Failed to enqueue aisle reorder:', error);
-    }
-  }
+  await apiClient.aisles.reorder(aisleIds);
 }
 
-// Get products count for an aisle
 export async function getAisleProductCount(aisleId: number): Promise<number> {
-  const db = await getDatabase();
-  if (!db) return 0;
-  const result = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) as count FROM products WHERE aisle_id = ?',
-    [aisleId]
-  );
-  return result?.count ?? 0;
+  const list = await apiClient.aisles.list();
+  const aisle = list.find((a: any) => a.id === aisleId);
+  return aisle?.productCount ?? 0;
 }
 
-// Get unnamed aisle or create it
 export async function getOrCreateUnnamedAisle(): Promise<number> {
-  const db = await getDatabase();
-  if (!db) return -1;
-  const unnamed = await db.getFirstAsync<{ id: number }>(
-    'SELECT id FROM aisles WHERE name = ? LIMIT 1',
-    ['']
-  );
-
-  if (unnamed) {
-    return unnamed.id;
-  }
-
-  // Create it with highest order
-  const result = await db.getFirstAsync<{ max_order: number | null }>(
-    'SELECT MAX(order_index) as max_order FROM aisles'
-  );
-  const nextOrder = (result?.max_order ?? -1) + 1;
-  const insertResult = await db.runAsync(
-    'INSERT INTO aisles (name, order_index) VALUES (?, ?)',
-    ['', nextOrder]
-  );
-  return insertResult.lastInsertRowId;
+  const list = await apiClient.aisles.list();
+  const unnamed = list.find((a: any) => a.name === '');
+  if (unnamed) return unnamed.id;
+  const created = await apiClient.aisles.create('');
+  return created.id;
 }

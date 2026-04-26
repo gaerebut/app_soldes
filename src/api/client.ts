@@ -1,14 +1,25 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SERVER_URL_KEY = 'dlc_server_url';
-const DEFAULT_SERVER_URL = 'http://187.124.215.103';
+const DEFAULT_SERVER_URL = 'http://192.168.1.63:3000';
+const OBSOLETE_URLS = ['http://127.0.0.1:3000', 'http://localhost:3000'];
 
 let cachedServerUrl: string | null = null;
+let _onUnauthorized: (() => void) | null = null;
 
-async function getServerUrl(): Promise<string> {
+export function setUnauthorizedHandler(fn: () => void): void {
+  _onUnauthorized = fn;
+}
+
+export async function getServerUrl(): Promise<string> {
   if (cachedServerUrl) return cachedServerUrl;
   const stored = await AsyncStorage.getItem(SERVER_URL_KEY);
-  cachedServerUrl = stored || DEFAULT_SERVER_URL;
+  if (!stored || OBSOLETE_URLS.includes(stored)) {
+    cachedServerUrl = DEFAULT_SERVER_URL;
+    await AsyncStorage.setItem(SERVER_URL_KEY, DEFAULT_SERVER_URL);
+  } else {
+    cachedServerUrl = stored;
+  }
   return cachedServerUrl;
 }
 
@@ -25,12 +36,23 @@ async function authFetch(path: string, options: RequestInit = {}): Promise<Respo
   const [serverUrl, token] = await Promise.all([getServerUrl(), getToken()]);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${serverUrl}${path}`, { ...options, headers });
+  if (res.status === 401) {
+    await AsyncStorage.removeItem('dlc_auth_token');
+    _onUnauthorized?.();
   }
-  return fetch(`${serverUrl}${path}`, { ...options, headers });
+  return res;
+}
+
+async function jsonOrThrow<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+  }
+  return res.json() as Promise<T>;
 }
 
 export const apiClient = {
@@ -47,176 +69,160 @@ export const apiClient = {
     return { token: data.token };
   },
 
+  async ping(): Promise<boolean> {
+    try {
+      const serverUrl = await getServerUrl();
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 2500);
+      const res = await fetch(`${serverUrl}/api/ping`, { signal: ctrl.signal });
+      clearTimeout(t);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  // Aisles
+  aisles: {
+    async list(): Promise<any[]> {
+      return jsonOrThrow(await authFetch('/api/aisles'));
+    },
+    async create(name: string): Promise<any> {
+      return jsonOrThrow(
+        await authFetch('/api/aisles', { method: 'POST', body: JSON.stringify({ name }) })
+      );
+    },
+    async update(id: number, name: string): Promise<any> {
+      return jsonOrThrow(
+        await authFetch(`/api/aisles/${id}`, { method: 'PUT', body: JSON.stringify({ name }) })
+      );
+    },
+    async delete(id: number): Promise<void> {
+      await jsonOrThrow(await authFetch(`/api/aisles/${id}`, { method: 'DELETE' }));
+    },
+    async reorder(ids: number[]): Promise<void> {
+      await jsonOrThrow(
+        await authFetch('/api/aisles/reorder', { method: 'POST', body: JSON.stringify({ ids }) })
+      );
+    },
+  },
+
   // Products
-  async getProducts(): Promise<any[]> {
-    const res = await authFetch('/api/products');
-    if (!res.ok) throw new Error('Failed to fetch products');
-    return res.json();
-  },
-
-  async createProduct(ean: string, name: string, initialExpiryDate?: string): Promise<any> {
-    const res = await authFetch('/api/products', {
-      method: 'POST',
-      body: JSON.stringify({ ean, name, initial_expiry_date: initialExpiryDate }),
-    });
-    if (!res.ok) throw new Error('Failed to create product');
-    return res.json();
-  },
-
-  async deleteProduct(ean: string): Promise<void> {
-    const res = await authFetch(`/api/products/${ean}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete product');
+  products: {
+    async list(): Promise<any[]> {
+      return jsonOrThrow(await authFetch('/api/products'));
+    },
+    async get(id: number): Promise<any> {
+      return jsonOrThrow(await authFetch(`/api/products/${id}`));
+    },
+    async findByBarcode(barcode: string): Promise<any | null> {
+      return jsonOrThrow(await authFetch(`/api/products?barcode=${encodeURIComponent(barcode)}`));
+    },
+    async create(payload: {
+      name: string;
+      category?: string;
+      barcode?: string | null;
+      image_uri?: string | null;
+      initial_expiry_date?: string | null;
+      aisle_id?: number | null;
+    }): Promise<any> {
+      return jsonOrThrow(
+        await authFetch('/api/products', { method: 'POST', body: JSON.stringify(payload) })
+      );
+    },
+    async update(
+      id: number,
+      payload: {
+        name?: string;
+        category?: string;
+        barcode?: string | null;
+        image_uri?: string | null;
+        initial_expiry_date?: string | null;
+        aisle_id?: number | null;
+      }
+    ): Promise<any> {
+      return jsonOrThrow(
+        await authFetch(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+      );
+    },
+    async delete(id: number): Promise<void> {
+      await jsonOrThrow(await authFetch(`/api/products/${id}`, { method: 'DELETE' }));
+    },
+    async setDLC(id: number, dlc: string, today: string): Promise<void> {
+      await jsonOrThrow(
+        await authFetch(`/api/products/${id}/dlc`, {
+          method: 'POST',
+          body: JSON.stringify({ dlc, today }),
+        })
+      );
+    },
+    async uploadPhoto(id: number, fileUri: string): Promise<{ image_uri: string }> {
+      const serverUrl = await getServerUrl();
+      const token = await getToken();
+      const formData = new FormData();
+      formData.append('photo', { uri: fileUri, type: 'image/jpeg', name: `${id}.jpg` } as any);
+      const res = await fetch(`${serverUrl}/api/products/${id}/photo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      return jsonOrThrow(res);
+    },
+    async photoUrl(imageUri: string | null | undefined): Promise<string | null> {
+      if (!imageUri) return null;
+      if (imageUri.startsWith('http')) return imageUri;
+      const serverUrl = await getServerUrl();
+      return `${serverUrl}${imageUri}`;
+    },
   },
 
   // Checks
-  async createCheck(ean: string, checkDate: string, status: 'ok' | 'rupture', nextExpiryDate?: string): Promise<any> {
-    const res = await authFetch('/api/checks', {
-      method: 'POST',
-      body: JSON.stringify({ ean, check_date: checkDate, status, next_expiry_date: nextExpiryDate }),
-    });
-    if (!res.ok) throw new Error('Failed to create check');
-    return res.json();
-  },
-
-  async getChecksForDate(date: string): Promise<any[]> {
-    const res = await authFetch(`/api/checks?date=${date}`);
-    if (!res.ok) throw new Error('Failed to fetch checks');
-    return res.json();
-  },
-
-  async getCheckHistory(ean: string): Promise<any[]> {
-    const res = await authFetch(`/api/checks/product/${ean}`);
-    if (!res.ok) throw new Error('Failed to fetch check history');
-    return res.json();
-  },
-
-  // Photos
-  async uploadPhoto(ean: string, fileUri: string): Promise<{ image_version: number }> {
-    const serverUrl = await getServerUrl();
-    const token = await getToken();
-    const formData = new FormData();
-    formData.append('photo', {
-      uri: fileUri,
-      type: 'image/jpeg',
-      name: `${ean}.jpg`,
-    } as any);
-
-    const res = await fetch(`${serverUrl}/api/photos/upload/${ean}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
-    });
-    if (!res.ok) throw new Error('Failed to upload photo');
-    return res.json();
-  },
-
-  async getPhotoUrl(ean: string): Promise<string> {
-    const serverUrl = await getServerUrl();
-    return `${serverUrl}/api/photos/${ean}`;
-  },
-
-  async getPhotoVersion(ean: string): Promise<number> {
-    const res = await authFetch(`/api/photos/${ean}/version`);
-    if (!res.ok) return 0;
-    const data = await res.json();
-    return data.image_version || 0;
-  },
-
-  // Sync - Legacy endpoints (kept for compatibility)
-  async fullSync(): Promise<{ products: any[]; checks: any[]; aisles: any[]; timestamp: string }> {
-    const res = await authFetch('/api/sync/full');
-    if (!res.ok) throw new Error('Failed to sync');
-    return res.json();
-  },
-
-  async syncChanges(since: string): Promise<{ products: any[]; checks: any[]; timestamp: string }> {
-    const res = await authFetch(`/api/sync/changes?since=${encodeURIComponent(since)}`);
-    if (!res.ok) throw new Error('Failed to sync changes');
-    return res.json();
-  },
-
-  // Sync - New endpoints (multi-device)
-  sync: {
-    /**
-     * Register or update device on server
-     */
-    async registerDevice(deviceId: string, deviceName: string, appVersion: string): Promise<any> {
-      const res = await authFetch('/api/sync/device/register', {
-        method: 'POST',
-        body: JSON.stringify({ device_id: deviceId, device_name: deviceName, app_version: appVersion }),
-      });
-      if (!res.ok) throw new Error('Failed to register device');
-      return res.json();
+  checks: {
+    async forProduct(productId: number): Promise<any[]> {
+      return jsonOrThrow(await authFetch(`/api/checks/product/${productId}`));
     },
-
-    /**
-     * Push local changes to server
-     */
-    async push(deviceId: string, changes: any[]): Promise<any> {
-      const res = await authFetch('/api/sync/push', {
-        method: 'POST',
-        body: JSON.stringify({ device_id: deviceId, changes }),
-      });
-      if (!res.ok) throw new Error('Failed to push changes');
-      return res.json();
+    async create(payload: {
+      product_id: number;
+      check_date: string;
+      status: 'ok' | 'rupture';
+      next_expiry_date?: string | null;
+    }): Promise<any> {
+      return jsonOrThrow(
+        await authFetch('/api/checks', { method: 'POST', body: JSON.stringify(payload) })
+      );
     },
+  },
 
-    /**
-     * Pull changes from server
-     */
-    async pull(deviceId: string, since?: string, limit: number = 100): Promise<any> {
-      const params = new URLSearchParams({ device_id: deviceId, limit: limit.toString() });
-      if (since) {
-        params.append('since', since);
-      }
-      const res = await authFetch(`/api/sync/pull?${params.toString()}`);
-      if (!res.ok) throw new Error('Failed to pull changes');
-      return res.json();
+  // Devices
+  devices: {
+    async register(id: string, name: string): Promise<any> {
+      return jsonOrThrow(
+        await authFetch('/api/devices', { method: 'POST', body: JSON.stringify({ id, name }) })
+      );
     },
-
-    /**
-     * Resolve a conflict (user choice)
-     */
-    async resolveConflict(conflictId: number, chosenVersion: 'device_a' | 'device_b'): Promise<any> {
-      const res = await authFetch(`/api/sync/conflict-resolve/${conflictId}`, {
-        method: 'POST',
-        body: JSON.stringify({ chosen_version: chosenVersion }),
-      });
-      if (!res.ok) throw new Error('Failed to resolve conflict');
-      return res.json();
+    async rename(id: string, name: string): Promise<any> {
+      return jsonOrThrow(
+        await authFetch(`/api/devices/${id}`, { method: 'PUT', body: JSON.stringify({ name }) })
+      );
     },
+  },
 
-    /**
-     * Get sync status for device
-     */
-    async getStatus(deviceId: string): Promise<any> {
-      const res = await authFetch(`/api/sync/status?device_id=${deviceId}`);
-      if (!res.ok) throw new Error('Failed to get sync status');
-      return res.json();
+  // Computed views
+  views: {
+    async productsForDate(date: string): Promise<any[]> {
+      return jsonOrThrow(await authFetch(`/api/views/products-for-date?date=${date}`));
     },
-
-    /**
-     * Get list of registered devices
-     */
-    async getDevices(): Promise<any> {
-      const res = await authFetch('/api/sync/devices');
-      if (!res.ok) throw new Error('Failed to get devices');
-      return res.json();
+    async overdue(today: string): Promise<any[]> {
+      return jsonOrThrow(await authFetch(`/api/views/overdue?today=${today}`));
     },
-
-    /**
-     * Get sync history
-     */
-    async getHistory(deviceId?: string, limit: number = 50): Promise<any> {
-      let url = `/api/sync/history?limit=${limit}`;
-      if (deviceId) {
-        url += `&device_id=${deviceId}`;
-      }
-      const res = await authFetch(url);
-      if (!res.ok) throw new Error('Failed to get sync history');
-      return res.json();
+    async todayExpiry(today: string): Promise<any[]> {
+      return jsonOrThrow(await authFetch(`/api/views/today-expiry?today=${today}`));
+    },
+    async ruptures(): Promise<any[]> {
+      return jsonOrThrow(await authFetch('/api/views/ruptures'));
+    },
+    async checkedToday(today: string): Promise<any[]> {
+      return jsonOrThrow(await authFetch(`/api/views/checked-today?today=${today}`));
     },
   },
 };

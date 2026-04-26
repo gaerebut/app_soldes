@@ -78,7 +78,14 @@
       "Bash(ssh root@187.124.215.103 \"cd /root/app_soldes && pm2 restart dlc-manager && echo 'Server restarted on port 80'\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(ssh -i ~/.ssh/hostinger_key root@187.124.215.103 \"cd /root/app_soldes && git pull origin main && pm2 restart dlc-manager && echo 'Pull and restart complete'\")",
+      "Bash(ipconfig)",
+      "Bash(curl -s -m 3 http://192.168.1.63:3000/api/ping)",
+      "Bash(echo \"---exit:$?\")",
+      "Bash(curl -s -X POST http://192.168.1.63:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"login\":\"Honfleur\",\"password\":\"Honfleur\"}')",
+      "Bash(node -e \"const Database = require\\('better-sqlite3'\\); const db = new Database\\('dlc-manager.db'\\); console.log\\(db.prepare\\(\\\\\"SELECT sql FROM sqlite_master WHERE type='table' AND name='aisles'\\\\\"\\).get\\(\\)?.sql\\);\")",
+      "Bash(curl -s http://localhost:3000/api/ping)"
     ]
   }
 }

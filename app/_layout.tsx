@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Colors } from '../src/constants/theme';
 import { AuthProvider, useAuth } from '../src/auth/AuthContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SyncManager } from '../src/sync';
+import NetworkGuard from '../src/realtime/NetworkGuard';
 
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
@@ -13,37 +13,15 @@ function RootLayoutNav() {
 
   useEffect(() => {
     if (isLoading) return;
-
-    console.log('🔍 Navigation check:', { token: !!token, segments: segments.join('/'), isLoading });
-
     const inAuthGroup = segments[0] === 'login';
     if (!token && !inAuthGroup) {
-      console.log('→ Navigating to /login');
       router.replace('/login');
     } else if (token && inAuthGroup) {
-      console.log('→ Navigating to / (home)');
       router.replace('/');
     }
   }, [token, isLoading, segments]);
 
-  // Initialize SyncManager when app is ready
-  useEffect(() => {
-    const initSync = async () => {
-      try {
-        const syncMgr = SyncManager.getInstance();
-        await syncMgr.initialize();
-        console.log('✅ SyncManager initialized');
-      } catch (error) {
-        console.error('❌ Failed to initialize SyncManager:', error);
-      }
-    };
-
-    if (token && !isLoading) {
-      initSync();
-    }
-  }, [token, isLoading]);
-
-  return (
+  const stack = (
     <>
       <StatusBar style="dark" />
       <Stack
@@ -60,33 +38,19 @@ function RootLayoutNav() {
       >
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="settings"
-          options={{ title: 'Parametres' }}
-        />
-        <Stack.Screen
-          name="scanner"
-          options={{ title: 'Scanner', headerShown: false }}
-        />
-        <Stack.Screen
-          name="products"
-          options={{ title: 'Gestion des produits' }}
-        />
-        <Stack.Screen
-          name="product/add"
-          options={{ title: 'Ajouter un produit' }}
-        />
-        <Stack.Screen
-          name="product/[id]"
-          options={{ title: 'Modifier le produit' }}
-        />
-        <Stack.Screen
-          name="check/[id]"
-          options={{ title: 'Controle' }}
-        />
+        <Stack.Screen name="settings" options={{ title: 'Parametres' }} />
+        <Stack.Screen name="scanner" options={{ title: 'Scanner', headerShown: false }} />
+        <Stack.Screen name="products" options={{ title: 'Gestion des produits' }} />
+        <Stack.Screen name="product/add" options={{ title: 'Ajouter un produit' }} />
+        <Stack.Screen name="product/[id]" options={{ title: 'Modifier le produit' }} />
+        <Stack.Screen name="check/[id]" options={{ title: 'Controle' }} />
       </Stack>
     </>
   );
+
+  // Apply NetworkGuard only when authenticated (login screen should still render)
+  if (!token || isLoading) return stack;
+  return <NetworkGuard>{stack}</NetworkGuard>;
 }
 
 export default function RootLayout() {

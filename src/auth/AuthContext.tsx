@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setUnauthorizedHandler } from '../api/client';
 
 interface AuthState {
   token: string | null;
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored) setToken(stored);
       setIsLoading(false);
     });
+    setUnauthorizedHandler(() => setToken(null));
   }, []);
 
   const login = async (newToken: string) => {

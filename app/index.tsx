@@ -21,6 +21,7 @@ import {
   getTodayExpiryProducts,
 } from '../src/database/products';
 import { getTodayStr, formatDateShort, formatDateFR, toLocalDateStr } from '../src/utils/date';
+import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
 
 type Tab = 'a_traiter' | 'rupture';
 
@@ -80,6 +81,13 @@ export default function HomeScreen() {
       loadProductCountByDay();
     }, [loadData, loadProductCountByDay])
   );
+
+  const refreshAll = useCallback(() => {
+    loadData();
+    loadProductCountByDay();
+  }, [loadData, loadProductCountByDay]);
+
+  useRealtimeRefresh(['products:changed', 'checks:changed', 'aisles:changed'], refreshAll);
 
   const onRefresh = async () => {
     setRefreshing(true);

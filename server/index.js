@@ -2,40 +2,30 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
-const createSyncRoutes = require('./sync');
-const ConflictResolver = require('./conflictResolver');
-const DeviceRegistry = require('./deviceRegistry');
+const http = require('http');
+const { Server: SocketIOServer } = require('socket.io');
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const PORT = 80;
+const PORT = 3000;
 const JWT_SECRET = 'dlc-manager-secret-key-change-in-production';
 const DB_PATH = path.join(__dirname, 'dlc-manager.db');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
-// Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
 // ---------------------------------------------------------------------------
-// Database setup - Using sqlite3 (async compatible)
+// Database setup (better-sqlite3, synchronous)
 // ---------------------------------------------------------------------------
-const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) {
-    console.error('Database connection error:', err);
-  } else {
-    console.log('✅ Database connected');
-  }
-});
-
-// Enable foreign keys
-db.run('PRAGMA foreign_keys = ON');
-db.run('PRAGMA journal_mode = WAL');
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -44,163 +34,99 @@ db.exec(`
     password TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS products (
-    id TEXT PRIMARY KEY,
-    ean TEXT UNIQUE,
+  CREATE TABLE IF NOT EXISTS aisles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    barcode TEXT,
-    category TEXT DEFAULT 'Autre',
-    image_uri TEXT,
-    image_version INTEGER DEFAULT 0,
-    initial_expiry_date TEXT,
-    aisle_id INTEGER,
-    version INTEGER DEFAULT 0,
-    device_id TEXT DEFAULT 'server',
-    is_deleted INTEGER DEFAULT 0,
-    updated_at TEXT,
+    order_index INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    barcode TEXT,
+    category TEXT NOT NULL DEFAULT 'Autre',
+    image_uri TEXT,
+    initial_expiry_date TEXT,
+    aisle_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (aisle_id) REFERENCES aisles(id) ON DELETE SET NULL
+  );
+
   CREATE TABLE IF NOT EXISTS checks (
-    id TEXT PRIMARY KEY,
-    product_id TEXT NOT NULL,
-    ean TEXT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
     check_date TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('ok', 'rupture')),
     next_expiry_date TEXT,
     previous_expiry_date TEXT,
-    version INTEGER DEFAULT 0,
-    device_id TEXT DEFAULT 'server',
-    is_deleted INTEGER DEFAULT 0,
-    updated_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
   );
 
-  CREATE TABLE IF NOT EXISTS aisles (
+  CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    order_index INTEGER DEFAULT 0,
-    version INTEGER DEFAULT 0,
-    device_id TEXT DEFAULT 'server',
-    is_deleted INTEGER DEFAULT 0,
-    updated_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS device_registry (
-    device_id TEXT PRIMARY KEY,
-    device_name TEXT,
-    app_version TEXT,
-    last_sync TEXT,
-    last_sync_version INTEGER DEFAULT 0,
-    is_active INTEGER DEFAULT 1,
-    last_seen TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS sync_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    device_id TEXT NOT NULL,
-    table_name TEXT NOT NULL,
-    operation TEXT NOT NULL CHECK(operation IN ('CREATE', 'UPDATE', 'DELETE')),
-    entity_id TEXT NOT NULL,
-    data_before TEXT,
-    data_after TEXT,
-    timestamp TEXT NOT NULL,
-    version INTEGER,
-    synced_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS conflicts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity_id TEXT NOT NULL,
-    entity_type TEXT,
-    device_a_id TEXT,
-    device_a_version INTEGER,
-    device_a_data TEXT,
-    device_b_id TEXT,
-    device_b_version INTEGER,
-    device_b_data TEXT,
-    resolution_strategy TEXT DEFAULT 'lww',
-    chosen_version TEXT,
-    resolved_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS sync_queue (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    device_id TEXT NOT NULL,
-    table_name TEXT NOT NULL,
-    operation TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    data TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    synced_at TEXT,
-    error TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE INDEX IF NOT EXISTS idx_checks_date ON checks(check_date);
   CREATE INDEX IF NOT EXISTS idx_checks_product ON checks(product_id);
   CREATE INDEX IF NOT EXISTS idx_products_aisle ON products(aisle_id);
   CREATE INDEX IF NOT EXISTS idx_aisles_order ON aisles(order_index);
-  CREATE INDEX IF NOT EXISTS idx_sync_history_device ON sync_history(device_id);
-  CREATE INDEX IF NOT EXISTS idx_sync_history_time ON sync_history(created_at);
-  CREATE INDEX IF NOT EXISTS idx_conflicts_resolved ON conflicts(resolved_at);
 `);
 
-// Seed default user if not exists
+// Seed default user
 const existingUser = db.prepare('SELECT id FROM users WHERE login = ?').get('Honfleur');
 if (!existingUser) {
   db.prepare('INSERT INTO users (login, password) VALUES (?, ?)').run('Honfleur', 'Honfleur');
   console.log('Default user "Honfleur" created.');
 }
 
+console.log('✅ Database connected');
+
 // ---------------------------------------------------------------------------
 // Multer setup for photo uploads
 // ---------------------------------------------------------------------------
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, _file, cb) => {
-    const ext = '.jpg';
-    cb(null, `${req.params.ean}${ext}`);
-  },
+  filename: (req, _file, cb) => cb(null, `${req.params.id}.jpg`),
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
   },
 });
 
 // ---------------------------------------------------------------------------
-// Sync Modules
-// ---------------------------------------------------------------------------
-const conflictResolver = new ConflictResolver(db);
-const deviceRegistry = new DeviceRegistry(db);
-
-// ---------------------------------------------------------------------------
-// Express app
+// Express + Socket.IO
 // ---------------------------------------------------------------------------
 const app = express();
-const syncRouter = express.Router();
-app.use(cors());
-app.use(express.json());
+const server = http.createServer(app);
+const io = new SocketIOServer(server, { cors: { origin: '*' } });
 
-// Register sync routes
-createSyncRoutes(syncRouter, db, conflictResolver, deviceRegistry);
-app.use(syncRouter);
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+io.on('connection', (socket) => {
+  console.log(`🔌 Socket connected: ${socket.id}`);
+  socket.on('disconnect', () => console.log(`🔌 Socket disconnected: ${socket.id}`));
+});
+
+// Broadcast helper
+function broadcast(event, payload) {
+  io.emit(event, payload);
+}
 
 // ---------------------------------------------------------------------------
-// Auth middleware
+// Auth
 // ---------------------------------------------------------------------------
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -209,213 +135,477 @@ function authenticate(req, res, next) {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
-// ---------------------------------------------------------------------------
-// AUTH routes
-// ---------------------------------------------------------------------------
 app.post('/api/auth/login', (req, res) => {
   const { login, password } = req.body;
-  if (!login || !password) {
-    return res.status(400).json({ error: 'Login and password are required' });
-  }
-
+  if (!login || !password) return res.status(400).json({ error: 'Login and password are required' });
   const user = db.prepare('SELECT * FROM users WHERE login = ? AND password = ?').get(login, password);
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
 });
 
+// Health check (used by mobile NetworkGuard)
+app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
 // ---------------------------------------------------------------------------
-// PRODUCTS routes
+// Helpers for product DLC computation
 // ---------------------------------------------------------------------------
-app.get('/api/products', authenticate, (_req, res) => {
-  const products = db.prepare('SELECT * FROM products ORDER BY name').all();
-  res.json(products);
+function getLatestCheck(productId) {
+  return db.prepare(
+    'SELECT status, next_expiry_date FROM checks WHERE product_id = ? ORDER BY check_date DESC, created_at DESC LIMIT 1'
+  ).get(productId);
+}
+
+function getCheckOnDate(productId, dateStr) {
+  return db.prepare(
+    'SELECT status, next_expiry_date FROM checks WHERE product_id = ? AND check_date = ? ORDER BY created_at DESC LIMIT 1'
+  ).get(productId, dateStr);
+}
+
+function getPreviousCheckBefore(productId, dateStr) {
+  return db.prepare(
+    'SELECT next_expiry_date FROM checks WHERE product_id = ? AND check_date < ? ORDER BY check_date DESC LIMIT 1'
+  ).get(productId, dateStr);
+}
+
+function getAllProductsOrdered() {
+  return db.prepare(
+    `SELECT p.* FROM products p
+     LEFT JOIN aisles a ON p.aisle_id = a.id
+     ORDER BY COALESCE(a.order_index, 999), p.name`
+  ).all();
+}
+
+// ---------------------------------------------------------------------------
+// AISLES
+// ---------------------------------------------------------------------------
+app.get('/api/aisles', authenticate, (_req, res) => {
+  const aisles = db.prepare(`
+    SELECT a.*, COUNT(p.id) as productCount
+    FROM aisles a
+    LEFT JOIN products p ON a.id = p.aisle_id
+    GROUP BY a.id
+    ORDER BY a.order_index ASC
+  `).all();
+  res.json(aisles);
 });
 
-app.post('/api/products', authenticate, (req, res) => {
-  const { ean, name, initial_expiry_date } = req.body;
-  if (!ean || !name) {
-    return res.status(400).json({ error: 'ean and name are required' });
-  }
-
-  const existing = db.prepare('SELECT ean FROM products WHERE ean = ?').get(ean);
-  if (existing) {
-    db.prepare('UPDATE products SET name = ?, initial_expiry_date = ? WHERE ean = ?')
-      .run(name, initial_expiry_date || null, ean);
-  } else {
-    db.prepare('INSERT INTO products (ean, name, initial_expiry_date, created_at) VALUES (?, ?, ?, datetime(\'now\'))')
-      .run(ean, name, initial_expiry_date || null);
-  }
-
-  const product = db.prepare('SELECT * FROM products WHERE ean = ?').get(ean);
-  res.json(product);
+app.post('/api/aisles', authenticate, (req, res) => {
+  const { name } = req.body;
+  if (name == null) return res.status(400).json({ error: 'name is required' });
+  const result = db.prepare('SELECT MAX(order_index) as max_order FROM aisles').get();
+  const nextOrder = (result?.max_order ?? 0) + 1;
+  const insert = db.prepare('INSERT INTO aisles (name, order_index) VALUES (?, ?)').run(name, nextOrder);
+  const aisle = db.prepare('SELECT * FROM aisles WHERE id = ?').get(insert.lastInsertRowid);
+  broadcast('aisles:changed', { action: 'create', aisle });
+  res.status(201).json(aisle);
 });
 
-app.delete('/api/products/:ean', authenticate, (req, res) => {
-  const { ean } = req.params;
-  const existing = db.prepare('SELECT ean FROM products WHERE ean = ?').get(ean);
-  if (!existing) {
-    return res.status(404).json({ error: 'Product not found' });
+app.put('/api/aisles/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  if (name == null) return res.status(400).json({ error: 'name is required' });
+  const existing = db.prepare('SELECT * FROM aisles WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Aisle not found' });
+  db.prepare('UPDATE aisles SET name = ? WHERE id = ?').run(name, id);
+  const aisle = db.prepare('SELECT * FROM aisles WHERE id = ?').get(id);
+  broadcast('aisles:changed', { action: 'update', aisle });
+  res.json(aisle);
+});
+
+app.delete('/api/aisles/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const existing = db.prepare('SELECT * FROM aisles WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Aisle not found' });
+
+  // Transfer products to "unnamed" aisle if needed
+  const count = db.prepare('SELECT COUNT(*) as count FROM products WHERE aisle_id = ?').get(id);
+  if (count.count > 0) {
+    let unnamed = db.prepare("SELECT id FROM aisles WHERE name = '' ORDER BY id ASC LIMIT 1").get();
+    if (!unnamed) {
+      const r = db.prepare('SELECT MAX(order_index) as max_order FROM aisles').get();
+      const nextOrder = (r?.max_order ?? -1) + 1;
+      const ins = db.prepare("INSERT INTO aisles (name, order_index) VALUES ('', ?)").run(nextOrder);
+      unnamed = { id: ins.lastInsertRowid };
+      broadcast('aisles:changed', {
+        action: 'create',
+        aisle: db.prepare('SELECT * FROM aisles WHERE id = ?').get(unnamed.id),
+      });
+    }
+    db.prepare('UPDATE products SET aisle_id = ? WHERE aisle_id = ?').run(unnamed.id, id);
+    broadcast('products:changed', { action: 'bulk_update' });
   }
 
-  db.prepare('DELETE FROM products WHERE ean = ?').run(ean);
+  db.prepare('DELETE FROM aisles WHERE id = ?').run(id);
+  broadcast('aisles:changed', { action: 'delete', id: Number(id) });
+  res.json({ success: true });
+});
 
-  // Also remove photo if exists
-  const photoPath = path.join(UPLOADS_DIR, `${ean}.jpg`);
-  if (fs.existsSync(photoPath)) {
-    fs.unlinkSync(photoPath);
-  }
-
+app.post('/api/aisles/reorder', authenticate, (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array is required' });
+  const stmt = db.prepare('UPDATE aisles SET order_index = ? WHERE id = ?');
+  const tx = db.transaction((aisleIds) => {
+    aisleIds.forEach((id, i) => stmt.run(i, id));
+  });
+  tx(ids);
+  broadcast('aisles:changed', { action: 'reorder', ids });
   res.json({ success: true });
 });
 
 // ---------------------------------------------------------------------------
-// CHECKS routes
+// DEVICES
 // ---------------------------------------------------------------------------
-app.get('/api/checks', authenticate, (req, res) => {
-  const { date } = req.query;
-  if (!date) {
-    return res.status(400).json({ error: 'date query parameter is required (YYYY-MM-DD)' });
+app.get('/api/devices', authenticate, (_req, res) => {
+  const devices = db.prepare(
+    'SELECT id, name, created_at, last_seen FROM devices ORDER BY last_seen DESC'
+  ).all();
+  res.json(devices);
+});
+
+app.post('/api/devices', authenticate, (req, res) => {
+  const { id, name } = req.body;
+  if (!id || !name) return res.status(400).json({ error: 'id and name are required' });
+
+  const existing = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
+  if (existing) {
+    db.prepare('UPDATE devices SET last_seen = datetime(\'now\') WHERE id = ?').run(id);
+    const device = db.prepare('SELECT id, name, created_at, last_seen FROM devices WHERE id = ?').get(id);
+    return res.json(device);
   }
 
-  const checks = db.prepare(`
-    SELECT c.*, p.name AS product_name
-    FROM checks c
-    LEFT JOIN products p ON c.ean = p.ean
-    WHERE c.check_date = ?
-    ORDER BY c.created_at DESC
-  `).all(date);
+  db.prepare('INSERT INTO devices (id, name) VALUES (?, ?)').run(id, name);
+  const device = db.prepare('SELECT id, name, created_at, last_seen FROM devices WHERE id = ?').get(id);
+  broadcast('devices:changed', { action: 'register', device });
+  res.status(201).json(device);
+});
 
+app.put('/api/devices/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+
+  const existing = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Device not found' });
+
+  db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name, id);
+  const device = db.prepare('SELECT id, name, created_at, last_seen FROM devices WHERE id = ?').get(id);
+  broadcast('devices:changed', { action: 'update', device });
+  res.json(device);
+});
+
+// ---------------------------------------------------------------------------
+// PRODUCTS
+// ---------------------------------------------------------------------------
+app.get('/api/products', authenticate, (req, res) => {
+  const { barcode } = req.query;
+  if (barcode) {
+    const product = db.prepare('SELECT * FROM products WHERE barcode = ?').get(barcode);
+    return res.json(product || null);
+  }
+  const products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
+  res.json(products);
+});
+
+app.get('/api/products/:id', authenticate, (req, res) => {
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
+  res.json(product);
+});
+
+app.post('/api/products', authenticate, (req, res) => {
+  const { name, category, barcode, image_uri, initial_expiry_date, aisle_id } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const result = db.prepare(
+    `INSERT INTO products (name, category, barcode, image_uri, initial_expiry_date, aisle_id)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(
+    name,
+    category || 'Autre',
+    barcode ?? null,
+    image_uri ?? null,
+    initial_expiry_date ?? null,
+    aisle_id ?? null
+  );
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
+  broadcast('products:changed', { action: 'create', product });
+  res.status(201).json(product);
+});
+
+app.put('/api/products/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { name, category, barcode, image_uri, initial_expiry_date, aisle_id } = req.body;
+  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Product not found' });
+
+  db.prepare(
+    `UPDATE products SET
+       name = COALESCE(?, name),
+       category = COALESCE(?, category),
+       barcode = ?,
+       image_uri = ?,
+       initial_expiry_date = ?,
+       aisle_id = ?
+     WHERE id = ?`
+  ).run(
+    name ?? null,
+    category ?? null,
+    barcode ?? existing.barcode,
+    image_uri ?? existing.image_uri,
+    initial_expiry_date ?? existing.initial_expiry_date,
+    aisle_id ?? existing.aisle_id,
+    id
+  );
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  broadcast('products:changed', { action: 'update', product });
+  res.json(product);
+});
+
+app.delete('/api/products/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Product not found' });
+  db.prepare('DELETE FROM products WHERE id = ?').run(id);
+
+  const photoPath = path.join(UPLOADS_DIR, `${id}.jpg`);
+  if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
+
+  broadcast('products:changed', { action: 'delete', id: Number(id) });
+  broadcast('checks:changed', { action: 'product_deleted', productId: Number(id) });
+  res.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// PHOTOS
+// ---------------------------------------------------------------------------
+app.post('/api/products/:id/photo', authenticate, upload.single('photo'), (req, res) => {
+  const { id } = req.params;
+  if (!req.file) return res.status(400).json({ error: 'No photo file provided' });
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  if (!product) {
+    fs.unlinkSync(req.file.path);
+    return res.status(404).json({ error: 'Product not found' });
+  }
+  const url = `/uploads/${id}.jpg?ts=${Date.now()}`;
+  db.prepare('UPDATE products SET image_uri = ? WHERE id = ?').run(url, id);
+  const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  broadcast('products:changed', { action: 'update', product: updated });
+  res.json({ success: true, image_uri: url });
+});
+
+// ---------------------------------------------------------------------------
+// CHECKS
+// ---------------------------------------------------------------------------
+app.get('/api/checks', authenticate, (_req, res) => {
+  const checks = db.prepare(
+    'SELECT * FROM checks ORDER BY check_date DESC, created_at DESC LIMIT 200'
+  ).all();
   res.json(checks);
 });
 
-app.get('/api/checks/product/:ean', authenticate, (req, res) => {
-  const { ean } = req.params;
-  const checks = db.prepare(`
-    SELECT * FROM checks
-    WHERE ean = ?
-    ORDER BY check_date DESC, created_at DESC
-  `).all(ean);
-
+app.get('/api/checks/product/:productId', authenticate, (req, res) => {
+  const checks = db.prepare(
+    'SELECT * FROM checks WHERE product_id = ? ORDER BY check_date DESC, created_at DESC'
+  ).all(req.params.productId);
   res.json(checks);
 });
 
 app.post('/api/checks', authenticate, (req, res) => {
-  const { ean, check_date, status, next_expiry_date } = req.body;
-  if (!ean || !check_date || !status) {
-    return res.status(400).json({ error: 'ean, check_date, and status are required' });
+  const { product_id, check_date, status, next_expiry_date } = req.body;
+  if (!product_id || !check_date || !status) {
+    return res.status(400).json({ error: 'product_id, check_date, status are required' });
   }
   if (!['ok', 'rupture'].includes(status)) {
     return res.status(400).json({ error: 'status must be "ok" or "rupture"' });
   }
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(product_id);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
 
-  // Verify product exists
-  const product = db.prepare('SELECT ean FROM products WHERE ean = ?').get(ean);
-  if (!product) {
-    return res.status(404).json({ error: 'Product not found' });
+  // For ruptures: capture previous DLC
+  let previousDLC = null;
+  if (status === 'rupture') {
+    const last = getLatestCheck(product_id);
+    previousDLC = last?.next_expiry_date ?? product.initial_expiry_date ?? null;
   }
 
-  const result = db.prepare(`
-    INSERT INTO checks (ean, check_date, status, next_expiry_date, created_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
-  `).run(ean, check_date, status, next_expiry_date || null);
+  // Replace any existing check for that product+date
+  db.prepare('DELETE FROM checks WHERE product_id = ? AND check_date = ?').run(product_id, check_date);
+  const ins = db.prepare(
+    `INSERT INTO checks (product_id, check_date, status, next_expiry_date, previous_expiry_date)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(product_id, check_date, status, next_expiry_date ?? null, previousDLC);
 
-  const check = db.prepare('SELECT * FROM checks WHERE id = ?').get(result.lastInsertRowid);
+  const check = db.prepare('SELECT * FROM checks WHERE id = ?').get(ins.lastInsertRowid);
+  broadcast('checks:changed', { action: 'create', check });
   res.status(201).json(check);
 });
 
-// ---------------------------------------------------------------------------
-// PHOTOS routes
-// ---------------------------------------------------------------------------
-app.post('/api/photos/upload/:ean', authenticate, upload.single('photo'), (req, res) => {
-  const { ean } = req.params;
-  if (!req.file) {
-    return res.status(400).json({ error: 'No photo file provided' });
-  }
+// Update product DLC by creating a new check for today
+app.post('/api/products/:id/dlc', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { dlc, today } = req.body;
+  if (!dlc || !today) return res.status(400).json({ error: 'dlc and today are required' });
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  if (!product) return res.status(404).json({ error: 'Product not found' });
 
-  // Verify product exists
-  const product = db.prepare('SELECT ean FROM products WHERE ean = ?').get(ean);
-  if (!product) {
-    // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
-    return res.status(404).json({ error: 'Product not found' });
-  }
-
-  // Increment image_version
-  db.prepare('UPDATE products SET image_version = image_version + 1 WHERE ean = ?').run(ean);
-
-  const updated = db.prepare('SELECT image_version FROM products WHERE ean = ?').get(ean);
-  res.json({ success: true, image_version: updated.image_version });
-});
-
-app.get('/api/photos/:ean', authenticate, (req, res) => {
-  const { ean } = req.params;
-  const photoPath = path.join(UPLOADS_DIR, `${ean}.jpg`);
-
-  if (!fs.existsSync(photoPath)) {
-    return res.status(404).json({ error: 'Photo not found' });
-  }
-
-  // Get image_version for cache headers
-  const product = db.prepare('SELECT image_version FROM products WHERE ean = ?').get(ean);
-  const version = product ? product.image_version : 0;
-
-  res.set({
-    'Content-Type': 'image/jpeg',
-    'Cache-Control': 'public, max-age=86400',
-    'ETag': `"${ean}-v${version}"`,
-  });
-
-  res.sendFile(photoPath);
-});
-
-app.get('/api/photos/:ean/version', authenticate, (req, res) => {
-  const { ean } = req.params;
-  const product = db.prepare('SELECT image_version FROM products WHERE ean = ?').get(ean);
-  if (!product) {
-    return res.status(404).json({ error: 'Product not found' });
-  }
-  res.json({ ean, image_version: product.image_version });
+  db.prepare('DELETE FROM checks WHERE product_id = ? AND check_date = ?').run(id, today);
+  db.prepare(
+    `INSERT INTO checks (product_id, check_date, status, next_expiry_date) VALUES (?, ?, 'ok', ?)`
+  ).run(id, today, dlc);
+  broadcast('checks:changed', { action: 'dlc_update', productId: Number(id) });
+  res.json({ success: true });
 });
 
 // ---------------------------------------------------------------------------
-// SYNC routes
+// COMPUTED VIEWS (server-side complex queries)
 // ---------------------------------------------------------------------------
-app.get('/api/sync/full', authenticate, (_req, res) => {
-  const products = db.prepare('SELECT * FROM products ORDER BY name').all();
-  const checks = db.prepare('SELECT * FROM checks ORDER BY check_date DESC, created_at DESC').all();
-  res.json({
-    products,
-    checks,
-    timestamp: new Date().toISOString(),
-  });
+function buildProductWithStatus(product, dateStr) {
+  const lastCheck = getLatestCheck(product.id);
+  if (lastCheck?.status === 'rupture') return null;
+  const currentDLC = lastCheck?.next_expiry_date ?? product.initial_expiry_date;
+  if (currentDLC !== dateStr) return null;
+
+  const dateCheck = getCheckOnDate(product.id, dateStr);
+  let previousDLC = null;
+  if (dateCheck) {
+    const prev = getPreviousCheckBefore(product.id, dateStr);
+    previousDLC = prev?.next_expiry_date ?? product.initial_expiry_date ?? null;
+  }
+  return {
+    ...product,
+    last_status: dateCheck?.status ?? lastCheck?.status ?? null,
+    next_expiry_date: dateCheck?.next_expiry_date ?? currentDLC,
+    previous_expiry_date: previousDLC,
+    checked_today: !!dateCheck,
+  };
+}
+
+app.get('/api/views/products-for-date', authenticate, (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: 'date is required' });
+  const products = getAllProductsOrdered();
+  const out = [];
+  for (const p of products) {
+    const item = buildProductWithStatus(p, date);
+    if (item) out.push(item);
+  }
+  res.json(out);
 });
 
-app.get('/api/sync/changes', authenticate, (req, res) => {
-  const { since } = req.query;
-  if (!since) {
-    return res.status(400).json({ error: 'since query parameter is required (ISO timestamp)' });
+app.get('/api/views/overdue', authenticate, (req, res) => {
+  const { today } = req.query;
+  if (!today) return res.status(400).json({ error: 'today is required' });
+  const products = getAllProductsOrdered();
+  const out = [];
+  for (const p of products) {
+    const last = getLatestCheck(p.id);
+    if (last?.status === 'rupture') continue;
+    const currentDLC = last?.next_expiry_date ?? p.initial_expiry_date;
+    if (!currentDLC || currentDLC >= today) continue;
+    out.push({
+      ...p,
+      last_status: last?.status ?? null,
+      next_expiry_date: currentDLC,
+      previous_expiry_date: null,
+      checked_today: false,
+    });
+  }
+  res.json(out);
+});
+
+app.get('/api/views/today-expiry', authenticate, (req, res) => {
+  const { today } = req.query;
+  if (!today) return res.status(400).json({ error: 'today is required' });
+  const products = getAllProductsOrdered();
+  const out = [];
+  for (const p of products) {
+    const last = getLatestCheck(p.id);
+    if (last?.status === 'rupture') continue;
+    const currentDLC = last?.next_expiry_date ?? p.initial_expiry_date;
+    if (!currentDLC || currentDLC !== today) continue;
+    out.push({
+      ...p,
+      last_status: last?.status ?? null,
+      next_expiry_date: currentDLC,
+      previous_expiry_date: null,
+      checked_today: false,
+    });
+  }
+  res.json(out);
+});
+
+app.get('/api/views/ruptures', authenticate, (_req, res) => {
+  const rows = db.prepare(
+    `SELECT p.*, c.check_date as last_check_date FROM products p
+     INNER JOIN checks c ON p.id = c.product_id
+     INNER JOIN (
+       SELECT product_id, MAX(check_date) as max_date FROM checks GROUP BY product_id
+     ) latest ON c.product_id = latest.product_id AND c.check_date = latest.max_date
+     WHERE c.status = 'rupture'
+     ORDER BY p.name`
+  ).all();
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      last_status: 'rupture',
+      next_expiry_date: null,
+      previous_expiry_date: null,
+      checked_today: false,
+    }))
+  );
+});
+
+app.get('/api/views/checked-today', authenticate, (req, res) => {
+  const { today } = req.query;
+  if (!today) return res.status(400).json({ error: 'today is required' });
+
+  const checks = db.prepare(
+    `SELECT product_id, status, next_expiry_date, previous_expiry_date
+     FROM checks WHERE check_date = ? ORDER BY created_at DESC`
+  ).all(today);
+
+  const seen = new Set();
+  const unique = [];
+  for (const c of checks) {
+    if (!seen.has(c.product_id)) {
+      seen.add(c.product_id);
+      unique.push(c);
+    }
   }
 
-  const products = db.prepare('SELECT * FROM products WHERE created_at > ? ORDER BY name').all(since);
-  const checks = db.prepare('SELECT * FROM checks WHERE created_at > ? ORDER BY check_date DESC, created_at DESC').all(since);
+  const out = [];
+  for (const check of unique) {
+    if (check.next_expiry_date && check.next_expiry_date <= today) continue;
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(check.product_id);
+    if (!product) continue;
 
-  res.json({
-    products,
-    checks,
-    timestamp: new Date().toISOString(),
-  });
+    let previousDLC = check.previous_expiry_date;
+    if (!previousDLC) {
+      const prev = db.prepare(
+        `SELECT next_expiry_date FROM checks
+         WHERE product_id = ? AND next_expiry_date IS NOT NULL
+         ORDER BY check_date DESC, created_at DESC LIMIT 1`
+      ).get(check.product_id);
+      previousDLC = prev?.next_expiry_date ?? product.initial_expiry_date ?? null;
+    }
+
+    out.push({
+      ...product,
+      last_status: check.status,
+      next_expiry_date: check.next_expiry_date,
+      previous_expiry_date: previousDLC,
+      checked_today: true,
+      check_status: check.status,
+    });
+  }
+  res.json(out);
 });
 
 // ---------------------------------------------------------------------------
@@ -430,8 +620,9 @@ app.use((err, _req, res, _next) => {
 });
 
 // ---------------------------------------------------------------------------
-// Start server
+// Start
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
-  console.log(`DLC Manager server running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`DLC Manager server running on http://0.0.0.0:${PORT}`);
+  console.log(`Socket.IO ready`);
 });

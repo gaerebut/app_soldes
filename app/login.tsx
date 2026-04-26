@@ -34,24 +34,16 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      // Development mode: simulate login with hardcoded credentials
-      if (trimUser === 'Honfleur' && trimPass === 'Honfleur') {
-        // Generate a fake JWT-like token for development
-        const fakeToken = 'dev_token_' + Date.now() + '_' + Math.random().toString(36).substring(7);
-        console.log('🔐 Login attempt with token:', fakeToken.substring(0, 20) + '...');
-        await login(fakeToken);
-        console.log('✅ Login completed, token saved');
-        // Navigate to home screen
-        setTimeout(() => {
-          console.log('→ Navigating to home');
-          router.replace('/');
-        }, 100);
+      const result = await apiClient.login(trimUser, trimPass);
+      if (result.token) {
+        await login(result.token);
+        // _layout.tsx détecte le changement de token et redirige automatiquement
       } else {
-        Alert.alert('Erreur', 'Identifiants incorrects. Utilisez Honfleur/Honfleur.');
+        Alert.alert('Erreur', result.error || 'Identifiants incorrects.');
       }
     } catch (error) {
-      console.error('❌ Login error:', error);
-      Alert.alert('Erreur de connexion', 'Impossible de contacter le serveur. Verifiez votre connexion internet.');
+      console.error('Login error:', error);
+      Alert.alert('Erreur de connexion', 'Impossible de contacter le serveur. Vérifiez votre connexion réseau.');
     } finally {
       setLoading(false);
     }

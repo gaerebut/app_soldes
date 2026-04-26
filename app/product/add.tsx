@@ -17,6 +17,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors } from '../../src/constants/theme';
 import { addProduct } from '../../src/database/products';
@@ -26,6 +27,8 @@ import Calendar from '../../src/components/Calendar';
 import CameraCapture from '../../src/components/CameraCapture';
 import { getAllAisles, Aisle } from '../../src/database/aisles';
 import { saveLastSelectedAisle, getLastSelectedAisle } from '../../src/utils/aisleStorage';
+
+const BARCODE_CACHE_KEY = 'dlc_barcode_cache';
 
 export default function AddProductScreen() {
   const router = useRouter();
@@ -121,7 +124,18 @@ export default function AddProductScreen() {
       Alert.alert('Photo requise', 'Veuillez ajouter une photo du produit.');
       return;
     }
-    await addProduct(trimmed, 'Autre', barcode.trim() || undefined, imageUri, expiryDate, selectedAisleId ?? undefined);
+    const result = await addProduct(trimmed, 'Autre', barcode.trim() || undefined, imageUri, expiryDate, selectedAisleId ?? undefined);
+
+    // Update barcode cache
+    const finalBarcode = barcode.trim();
+    if (finalBarcode) {
+      const cache = await AsyncStorage.getItem(BARCODE_CACHE_KEY)
+        .then((str) => (str ? JSON.parse(str) : {}))
+        .catch(() => ({}));
+      cache[finalBarcode] = result;
+      await AsyncStorage.setItem(BARCODE_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
+    }
+
     if (selectedAisleId) {
       await saveLastSelectedAisle(selectedAisleId);
     }

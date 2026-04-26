@@ -26,9 +26,10 @@ import {
   recordCheck,
   getCheckHistory,
   updateProduct,
+  getProductById,
 } from '../../src/database/products';
-import { getDatabase } from '../../src/database/db';
 import { getTodayStr, formatDateFR } from '../../src/utils/date';
+import { useRealtimeRefresh } from '../../src/realtime/useRealtimeRefresh';
 import Calendar from '../../src/components/Calendar';
 import CameraCapture from '../../src/components/CameraCapture';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -49,8 +50,7 @@ async function fetchAislesOnce(): Promise<Aisle[]> {
 
 async function fetchProductData(id: number) {
   if (productDataCache.has(id)) return productDataCache.get(id)!;
-  const db = await getDatabase();
-  const p = await db.getFirstAsync<Product>('SELECT * FROM products WHERE id = ?', [id]);
+  const p = await getProductById(id);
   const history = await getCheckHistory(id, 100);
   if (p) {
     productDataCache.set(id, { product: p, ruptureHistory: history });
@@ -122,6 +122,15 @@ export default function CheckScreen() {
     fetchProductData(currentId);
     if (nextId) fetchProductData(nextId);
   }, [currentId, prevId, nextId]);
+
+  useRealtimeRefresh(
+    ['products:changed', 'checks:changed', 'aisles:changed'],
+    useCallback(() => {
+      productDataCache.delete(currentId);
+      aislesCache = null;
+      fetchProductData(currentId);
+    }, [currentId])
+  );
 
   useLayoutEffect(() => {
     slideAnim.setValue(0);

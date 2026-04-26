@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,9 +22,10 @@ import { useAuth } from '../src/auth/AuthContext';
 import { apiClient } from '../src/api/client';
 import { getAllAislesWithCount, createAisle, updateAisleName, deleteAisleWithTransfer, reorderAisles, AisleWithProductCount } from '../src/database/aisles';
 import { getNotificationSettings, applyNotificationSettings, NotificationSettings } from '../src/utils/notifications';
-import SyncStatus from '../src/components/SyncStatus';
+import { getOrCreateDeviceId, getDeviceName, setDeviceName, registerDevice } from '../src/utils/device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setServerUrl } from '../src/api/client';
+import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -39,23 +40,31 @@ export default function SettingsScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempHour, setTempHour] = useState('8');
   const [tempMinute, setTempMinute] = useState('00');
-  const [showSyncStatus, setShowSyncStatus] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
-  const [serverUrl, setServerUrlState] = useState('http://187.124.215.103');
+  const [serverUrl, setServerUrlState] = useState('http://192.168.1.63:3000');
+  const [deviceName, setDeviceNameState] = useState('');
+  const [showDeviceNameModal, setShowDeviceNameModal] = useState(false);
+  const [editingDeviceName, setEditingDeviceName] = useState('');
 
   useFocusEffect(
     useCallback(() => {
       loadAisles();
       loadNotifSettings();
       loadServerUrl();
+      loadDeviceName();
+      initializeDevice();
     }, [])
   );
 
+  useRealtimeRefresh(['aisles:changed'], useCallback(() => {
+    loadAisles();
+  }, []));
+
   const loadServerUrl = async () => {
     const url = await AsyncStorage.getItem('dlc_server_url');
-    const DEFAULT_URL = 'http://187.124.215.103';
+    const DEFAULT_URL = 'http://192.168.1.63:3000';
 
-    if (url && url !== 'http://localhost:3000') {
+    if (url && url !== 'http://127.0.0.1:3000' && url !== DEFAULT_URL) {
       // Si une URL valide existe et ce n'est pas l'ancienne localhost, l'utiliser
       setServerUrlState(url);
     } else {
@@ -63,6 +72,16 @@ export default function SettingsScreen() {
       setServerUrlState(DEFAULT_URL);
       await AsyncStorage.setItem('dlc_server_url', DEFAULT_URL);
     }
+  };
+
+  const loadDeviceName = async () => {
+    const name = await getDeviceName();
+    setDeviceNameState(name);
+    setEditingDeviceName(name);
+  };
+
+  const initializeDevice = async () => {
+    await registerDevice(apiClient);
   };
 
   const handleSaveServerUrl = async () => {
@@ -214,6 +233,32 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSaveDeviceName = async () => {
+    const trimmed = editingDeviceName.trim();
+    if (!trimmed) {
+      Alert.alert('Erreur', 'Le nom ne peut pas être vide');
+      return;
+    }
+    if (trimmed.length > 30) {
+      Alert.alert('Erreur', 'Le nom ne peut pas dépasser 30 caractères');
+      return;
+    }
+    if (!/^[a-zA-Z0-9\s\-_]+$/.test(trimmed)) {
+      Alert.alert('Erreur', 'Le nom ne peut contenir que des lettres, chiffres, espaces, tirets et underscores');
+      return;
+    }
+
+    try {
+      await setDeviceName(trimmed);
+      const deviceId = await getOrCreateDeviceId();
+      await apiClient.devices.rename(deviceId, trimmed);
+      setDeviceNameState(trimmed);
+      setShowDeviceNameModal(false);
+    } catch (err) {
+      Alert.alert('Erreur', 'Impossible de sauvegarder le nom de l\'appareil');
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert(
       'Deconnexion',
@@ -235,6 +280,69 @@ export default function SettingsScreen() {
   return (
     <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Device Name Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitleStandalone}>📱 Nom de l'appareil</Text>
+        <TouchableOpacity
+          style={styles.settingItem}
+          onPress={() => {
+            setEditingDeviceName(deviceName);
+            setShowDeviceNameModal(true);
+          }}
+        >
+          <View style={styles.settingContent}>
+            <Text style={styles.settingLabel}>Nom actuel</Text>
+            <Text style={styles.settingValue}>{deviceName}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Device Name Modal */}
+      <Modal
+        visible={showDeviceNameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeviceNameModal(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setShowDeviceNameModal(false)}
+        >
+          <KeyboardAvoidingView
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Renommer l'appareil</Text>
+                  <TouchableOpacity onPress={() => setShowDeviceNameModal(false)}>
+                    <Ionicons name="close" size={24} color={Colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nom de l'appareil"
+                  placeholderTextColor={Colors.textLight}
+                  value={editingDeviceName}
+                  onChangeText={setEditingDeviceName}
+                  maxLength={30}
+                  autoFocus
+                />
+                <Text style={styles.inputHint}>{editingDeviceName.length}/30 caractères</Text>
+                <TouchableOpacity
+                  style={styles.submitButton}
+                  onPress={handleSaveDeviceName}
+                >
+                  <Text style={styles.submitButtonText}>Enregistrer</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
       {/* Aisles Management Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeaderCollapsible}>
@@ -270,7 +378,7 @@ export default function SettingsScreen() {
               <FlatList
                 scrollEnabled={false}
                 data={aisles}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={(item) => String(item.id ?? item.name ?? Math.random())}
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item, index }) => (
                   <View style={styles.aisleRow}>
@@ -319,7 +427,7 @@ export default function SettingsScreen() {
 
       {/* Notifications Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
+        <Text style={styles.sectionTitleStandalone}>Notifications</Text>
         <View style={styles.notifRow}>
           <View style={styles.notifInfo}>
             <Ionicons name="notifications-outline" size={20} color={Colors.text} />
@@ -344,33 +452,9 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {/* Multi-Device Sync Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Multi-Appareils</Text>
-        <Text style={styles.sectionDesc}>
-          Synchronisez vos donnees entre plusieurs appareils en temps reel.
-        </Text>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonPrimary]}
-          onPress={() => setShowSyncStatus(!showSyncStatus)}
-        >
-          <Ionicons name="devices-outline" size={18} color="#FFF" />
-          <Text style={styles.buttonText}>
-            {showSyncStatus ? 'Masquer synchronisation' : 'Voir synchronisation'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Sync Status Detail */}
-      {showSyncStatus && (
-        <View style={styles.syncStatusContainer}>
-          <SyncStatus />
-        </View>
-      )}
-
       {/* Server Configuration */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>⚙️ Serveur</Text>
+        <Text style={styles.sectionTitleStandalone}>⚙️ Serveur</Text>
         <TouchableOpacity
           style={[styles.button, styles.buttonSecondary]}
           onPress={() => setShowServerConfig(true)}
@@ -383,7 +467,7 @@ export default function SettingsScreen() {
 
       {/* Info */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Information</Text>
+        <Text style={styles.sectionTitleStandalone}>Information</Text>
         <View style={styles.infoBox}>
           <Ionicons name="information-circle-outline" size={20} color={Colors.textSecondary} />
           <Text style={styles.infoText}>
@@ -495,7 +579,7 @@ export default function SettingsScreen() {
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="http://187.124.215.103"
+              placeholder="http://192.168.1.63:3000"
               placeholderTextColor={Colors.textLight}
               value={serverUrl}
               onChangeText={setServerUrlState}
@@ -573,6 +657,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.text,
+  },
+  sectionTitleStandalone: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 12,
   },
   sectionCount: {
     fontSize: 14,
@@ -767,14 +857,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  syncStatusContainer: {
-    backgroundColor: Colors.card,
-    borderRadius: 12,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
-  },
   buttonSecondary: {
     backgroundColor: '#FF8800',
   },
@@ -804,5 +886,74 @@ const styles = StyleSheet.create({
     color: '#FF8800',
     flex: 1,
     lineHeight: 18,
+  },
+  // Device name styles
+  settingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.card,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  settingContent: {
+    flex: 1,
+  },
+  settingLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  settingValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  input: {
+    backgroundColor: Colors.card,
+    padding: 12,
+    borderRadius: 12,
+    fontSize: 16,
+    color: Colors.text,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    marginBottom: 8,
+  },
+  inputHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 16,
+  },
+  submitButton: {
+    backgroundColor: '#E3001B',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  submitButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
