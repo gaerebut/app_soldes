@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,13 @@ import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '../src/constants/theme';
-import { getDatabase } from '../src/database/db';
-import { Product } from '../src/database/products';
+import { getProductByBarcode } from '../src/database/products';
 import { padEAN13 } from '../src/utils/date';
+
+const BARCODE_CACHE_KEY = 'dlc_barcode_cache';
 
 export default function ScannerScreen() {
   const router = useRouter();
@@ -25,7 +28,24 @@ export default function ScannerScreen() {
   const [scanned, setScanned] = useState(false);
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualEAN, setManualEAN] = useState('');
+  const [zoom, setZoom] = useState(0);
   const lastScannedRef = useRef('');
+  const zoomRef = useRef(0);
+  const initialZoomRef = useRef(0);
+
+  const pinchGesture = Gesture.Pinch()
+    .runOnJS(true)
+    .onStart(() => {
+      initialZoomRef.current = zoomRef.current;
+    })
+    .onUpdate((e) => {
+      const next = Math.min(2, Math.max(0, initialZoomRef.current + (e.scale - 1) * 0.35));
+      setZoom(next);
+      zoomRef.current = next;
+    })
+    .onEnd(() => {
+      // zoomRef déjà à jour via onUpdate
+    });
 
   const processEAN = async (ean: string) => {
     if (!ean.trim()) {
@@ -33,21 +53,30 @@ export default function ScannerScreen() {
       return;
     }
 
-    // Pad EAN to 13 digits
     const paddedEAN = padEAN13(ean.trim());
 
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    // Check if product exists with this barcode
-    const db = await getDatabase();
-    const existing = await db.getFirstAsync<Product>(
-      'SELECT * FROM products WHERE barcode = ?',
-      [paddedEAN]
-    );
+    // Check cache first
+    const cache = await AsyncStorage.getItem(BARCODE_CACHE_KEY).then(
+      (str) => (str ? JSON.parse(str) : {})
+    ).catch(() => ({}));
+
+    if (cache[paddedEAN]) {
+      // Product found in cache → go directly to edit screen
+      router.replace(`/product/${cache[paddedEAN]}`);
+      return;
+    }
+
+    // Not in cache → check with API
+    const existing = await getProductByBarcode(paddedEAN);
 
     if (existing) {
+      // Update cache
+      cache[paddedEAN] = existing.id;
+      await AsyncStorage.setItem(BARCODE_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
       // Product found → go directly to edit screen
       router.replace(`/product/${existing.id}`);
     } else {
@@ -94,9 +123,11 @@ export default function ScannerScreen() {
 
   return (
     <View style={styles.container}>
+      <GestureDetector gesture={pinchGesture}>
       <CameraView
         style={styles.camera}
         facing="back"
+        zoom={zoom}
         barcodeScannerSettings={{
           barcodeTypes: [
             'ean13',
@@ -120,6 +151,14 @@ export default function ScannerScreen() {
           >
             <Ionicons name="close" size={28} color="#FFF" />
           </TouchableOpacity>
+
+          <View style={styles.zoomHint}>
+            <View style={styles.zoomHintFingers}>
+              <View style={[styles.zoomFinger, styles.zoomFingerLeft]} />
+              <View style={[styles.zoomFinger, styles.zoomFingerRight]} />
+            </View>
+            <Text style={styles.zoomHintText}>Pincer pour zoomer</Text>
+          </View>
 
           <View style={styles.scanArea}>
             <View style={[styles.corner, styles.cornerTL]} />
@@ -153,6 +192,7 @@ export default function ScannerScreen() {
           )}
         </View>
       </CameraView>
+      </GestureDetector>
 
       {/* Modal for manual EAN input */}
       <Modal
@@ -226,6 +266,37 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  zoomHint: {
+    alignItems: 'center',
+    marginBottom: 16,
+    opacity: 0.65,
+  },
+  zoomHintFingers: {
+    width: 54,
+    height: 46,
+    position: 'relative',
+  },
+  zoomFinger: {
+    position: 'absolute',
+    width: 11,
+    height: 32,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 7,
+    top: 7,
+  },
+  zoomFingerLeft: {
+    left: 6,
+    transform: [{ rotate: '-32deg' }],
+  },
+  zoomFingerRight: {
+    right: 6,
+    transform: [{ rotate: '32deg' }],
+  },
+  zoomHintText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 11,
+    marginTop: 2,
   },
   scanArea: {
     width: 280,
