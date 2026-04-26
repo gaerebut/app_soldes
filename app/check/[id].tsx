@@ -28,6 +28,7 @@ import {
   updateProduct,
   getProductById,
 } from '../../src/database/products';
+import { apiClient } from '../../src/api/client';
 import { getTodayStr, formatDateFR } from '../../src/utils/date';
 import { useRealtimeRefresh } from '../../src/realtime/useRealtimeRefresh';
 import Calendar from '../../src/components/Calendar';
@@ -294,7 +295,16 @@ export default function CheckScreen() {
           source.copy(dest);
           const prod = productDataCache.get(currentId)?.product;
           if (prod) {
-            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, dest.uri);
+            let finalImageUri = dest.uri;
+            // Upload photo to server
+            try {
+              const uploadResult = await apiClient.products.uploadPhoto(prod.id, dest.uri);
+              finalImageUri = uploadResult?.image_uri || dest.uri;
+            } catch (error) {
+              console.error('Photo upload error (non-critical):', error);
+              // Continue with local URI if upload fails
+            }
+            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri);
             productDataCache.delete(currentId);
             fetchProductData(currentId);
           }
