@@ -438,14 +438,6 @@ function ProductCheckView({
           <Text style={styles.ruptureBannerText}>En rupture de stock</Text>
         </View>
       )}
-      {isOverdue && (
-        <View style={styles.overdueBanner}>
-          <Ionicons name="alert-circle" size={22} color="#FFF" />
-          <Text style={styles.overdueBannerText}>
-            DLC dépassée depuis {daysOverdue} jour{daysOverdue > 1 ? 's' : ''} !
-          </Text>
-        </View>
-      )}
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={isActive}>
           <View style={[styles.header, isOverdue && styles.headerOverdue]}>
@@ -457,18 +449,11 @@ function ProductCheckView({
                 </View>
               </TouchableOpacity>
             )}
-            {isOverdue && (
-              <View style={styles.overdueDateBadge}>
-                <Ionicons name="warning" size={16} color="#FFF" />
-                <Text style={styles.overdueDateBadgeText}>{formatDateFR(selectedDate)}</Text>
-              </View>
-            )}
-            {isRupture ? (
-              <TouchableOpacity style={styles.changePhotoButton} onPress={onShowCamera} disabled={!isActive}>
-                <Ionicons name="camera" size={16} color="#FFF" />
-                <Text style={styles.changePhotoText}>Changer la photo</Text>
-              </TouchableOpacity>
-            ) : (
+            <TouchableOpacity style={styles.changePhotoButton} onPress={onShowCamera} disabled={!isActive}>
+              <Ionicons name="camera" size={16} color="#FFF" />
+              <Text style={styles.changePhotoText}>Changer la photo</Text>
+            </TouchableOpacity>
+            {!isRupture && (
               product.barcode && (
                 <View style={styles.eanRow}>
                   <Ionicons name="barcode-outline" size={18} color={Colors.textSecondary} />
