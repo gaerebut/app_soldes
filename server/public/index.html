@@ -387,16 +387,58 @@
         .product-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
+            gap: 20px;
+            padding-top: 18px;
         }
 
+        .products-pagination {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 0;
+            flex-wrap: wrap;
+        }
+        .products-pagination button {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+        }
+        .products-pagination button:hover:not(:disabled) { background: #f0f0f0; }
+        .products-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
         .product-card {
+            position: relative;
             background: white;
             border: 1px solid #ddd;
             border-radius: 8px;
-            overflow: hidden;
             cursor: pointer;
             transition: all 0.2s;
+        }
+
+        .product-new-badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: linear-gradient(135deg, #FF5252, #DC2626);
+            color: white;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 5px 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 2px solid white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transform: rotate(-8deg);
+            z-index: 2;
+            box-shadow: 0 3px 8px rgba(220, 38, 38, 0.45);
         }
 
         .product-card:hover {
@@ -412,6 +454,8 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
         }
 
         .product-image img {
@@ -669,7 +713,7 @@
                 <button class="tab-button active" onclick="switchTab('rayons')">🏪 Rayons <span class="tab-count" id="count-rayons">0</span></button>
                 <button class="tab-button" onclick="switchTab('produits')">📦 Produits <span class="tab-count" id="count-produits">0</span></button>
                 <button class="tab-button" onclick="switchTab('appareils')">📱 Appareils <span class="tab-count" id="count-appareils">0</span></button>
-                <button class="tab-button" onclick="switchTab('verifications')">✅ Vérifications <span class="tab-count" id="count-verifications">0</span></button>
+                <button class="tab-button" onclick="switchTab('logs')">📋 Logs <span class="tab-count" id="count-logs">0</span></button>
             </div>
 
             <div class="tabs-content">
@@ -687,7 +731,32 @@
                 <div id="produits" class="tab-pane">
                     <div class="section-title">📦 Produits</div>
                     <div id="message"></div>
+                    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+                        <input type="text" id="productsSearch" placeholder="Rechercher par nom ou EAN..." oninput="renderProducts()" style="flex:1;min-width:220px;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+                        <select id="productsFilterAisle" onchange="renderProducts()" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+                            <option value="">Tous les rayons</option>
+                        </select>
+                        <select id="productsFilterDLC" onchange="renderProducts()" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+                            <option value="">Toutes DLC</option>
+                            <option value="overdue">Dépassée</option>
+                            <option value="today" selected>Aujourd'hui</option>
+                            <option value="week">Sous 7 jours</option>
+                            <option value="month">Sous 30 jours</option>
+                            <option value="none">Sans DLC</option>
+                        </select>
+                        <select id="productsPageSize" onchange="renderProducts()" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+                            <option value="24">24 / page</option>
+                            <option value="48" selected>48 / page</option>
+                            <option value="96">96 / page</option>
+                        </select>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#333;cursor:pointer;">
+                            <input type="checkbox" id="productsFilterNew" onchange="renderProducts()" style="cursor:pointer;">
+                            Nouveaux uniquement
+                        </label>
+                    </div>
+                    <div id="productsPaginationTop" class="products-pagination"></div>
                     <div id="products" style="flex: 1; overflow-y: auto;"></div>
+                    <div id="productsPaginationBottom" class="products-pagination"></div>
                 </div>
 
                 <!-- TAB: Appareils -->
@@ -696,10 +765,16 @@
                     <div id="devices" style="flex: 1; overflow-y: auto;"></div>
                 </div>
 
-                <!-- TAB: Vérifications -->
-                <div id="verifications" class="tab-pane">
-                    <div class="section-title">✅ Vérifications</div>
-                    <div id="checks" style="flex: 1; overflow-y: auto;"></div>
+                <!-- TAB: Logs -->
+                <div id="logs" class="tab-pane">
+                    <div class="section-title">📋 Logs d'activité</div>
+                    <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+                        <select id="logsFilterDevice" onchange="renderLogs()" style="padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+                            <option value="">Tous les appareils</option>
+                        </select>
+                        <button onclick="loadLogs()" style="background:#0D9488;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:13px;">🔄 Rafraîchir</button>
+                    </div>
+                    <div id="logsList" style="flex:1;overflow-y:auto;"></div>
                 </div>
             </div>
         </div>
@@ -729,17 +804,6 @@
                 <input type="text" class="form-input" id="productName" placeholder="Nom du produit">
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Catégorie</label>
-                <select class="form-select" id="productCategory">
-                    <option>Autre</option>
-                    <option>Fruits & Légumes</option>
-                    <option>Viandes</option>
-                    <option>Fromages</option>
-                    <option>Surgelés</option>
-                    <option>Produits frais</option>
-                </select>
-            </div>
 
             <div class="form-group">
                 <label class="form-label">Code-barres</label>
@@ -785,21 +849,22 @@
 
         async function loadAllData() {
             try {
-                const [aisles, products, devices, checks] = await Promise.all([
+                const [aisles, products, devices, logs] = await Promise.all([
                     authFetch('/api/aisles').then(r => r.json()),
                     authFetch('/api/products').then(r => r.json()),
                     authFetch('/api/devices').then(r => r.json()),
-                    authFetch('/api/checks').then(r => r.json()),
+                    authFetch('/api/logs').then(r => r.json()),
                 ]);
 
                 allAisles = aisles || [];
                 productList = products || [];
+                allLogs = Array.isArray(logs) ? logs : [];
 
                 displayAisles(aisles);
                 displayProducts(products);
                 displayDevices(devices);
-                displayChecks(checks);
-                updateTabCounts(aisles, products, devices, checks);
+                renderLogs();
+                updateTabCounts(aisles, products, devices, allLogs);
                 updateAisleSelect(aisles);
 
                 lastRefresh = new Date();
@@ -818,16 +883,15 @@
             select.innerHTML = html;
         }
 
-        function updateTabCounts(aisles, products, devices, checks) {
-            const aisleCount = Array.isArray(aisles) ? aisles.length : 0;
-            const productCount = Array.isArray(products) ? products.length : 0;
-            const deviceCount = Array.isArray(devices) ? devices.length : 0;
-            const checkCount = Array.isArray(checks) ? checks.length : 0;
-
-            document.getElementById('count-rayons').textContent = aisleCount;
-            document.getElementById('count-produits').textContent = productCount;
-            document.getElementById('count-appareils').textContent = deviceCount;
-            document.getElementById('count-verifications').textContent = checkCount;
+        function updateTabCounts(aisles, products, devices, logs) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const productsToday = Array.isArray(products)
+                ? products.filter(p => (p.initial_expiry_date || '').slice(0, 10) === todayStr).length
+                : 0;
+            document.getElementById('count-rayons').textContent = Array.isArray(aisles) ? aisles.length : 0;
+            document.getElementById('count-produits').textContent = productsToday;
+            document.getElementById('count-appareils').textContent = Array.isArray(devices) ? devices.length : 0;
+            document.getElementById('count-logs').textContent = Array.isArray(logs) ? logs.length : 0;
         }
 
         function updateRefreshTime() {
@@ -879,42 +943,113 @@
 
         let currentProduct = null;
         let allAisles = [];
+        let allLogs = [];
+
+        let productsPage = 1;
 
         function displayProducts(products) {
-            const container = document.getElementById('products');
-            const productList = products || [];
+            // Refresh aisle filter options
+            const aisleSelect = document.getElementById('productsFilterAisle');
+            if (aisleSelect) {
+                const cur = aisleSelect.value;
+                aisleSelect.innerHTML = '<option value="">Tous les rayons</option>' +
+                    (allAisles || []).map(a => `<option value="${a.id}">${escapeHtml(a.name || '(Sans nom)')}</option>`).join('');
+                aisleSelect.value = cur;
+            }
+            productsPage = 1;
+            renderProducts();
+        }
 
-            if (productList.length === 0) {
+        function filterAndSortProducts() {
+            const q = (document.getElementById('productsSearch')?.value || '').trim().toLowerCase();
+            const aisleId = document.getElementById('productsFilterAisle')?.value || '';
+            const dlcFilter = document.getElementById('productsFilterDLC')?.value || '';
+            const onlyNew = document.getElementById('productsFilterNew')?.checked || false;
+            const today = new Date(); today.setHours(0,0,0,0);
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const dayMs = 86400000;
+
+            return (productList || []).filter(p => {
+                if (q && !((p.name || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q))) return false;
+                if (aisleId && String(p.aisle_id || '') !== aisleId) return false;
+                if (onlyNew && (p.created_at || '').slice(0, 10) !== todayStr) return false;
+                if (dlcFilter) {
+                    const dlc = p.initial_expiry_date;
+                    if (dlcFilter === 'none') { if (dlc) return false; }
+                    else if (!dlc) return false;
+                    else {
+                        const d = new Date(dlc); d.setHours(0,0,0,0);
+                        const diff = Math.round((d - today) / dayMs);
+                        if (dlcFilter === 'overdue' && diff >= 0) return false;
+                        if (dlcFilter === 'today' && diff !== 0) return false;
+                        if (dlcFilter === 'week' && (diff < 0 || diff > 7)) return false;
+                        if (dlcFilter === 'month' && (diff < 0 || diff > 30)) return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        function renderProducts() {
+            const container = document.getElementById('products');
+            const filtered = filterAndSortProducts();
+            const pageSize = parseInt(document.getElementById('productsPageSize')?.value || '48', 10);
+            const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+            if (productsPage > totalPages) productsPage = totalPages;
+            const start = (productsPage - 1) * pageSize;
+            const pageItems = filtered.slice(start, start + pageSize);
+
+            if (filtered.length === 0) {
                 container.innerHTML = '<div class="empty">Aucun produit</div>';
+                renderProductsPagination(0, 1, 1);
                 return;
             }
 
+            const todayStr = new Date().toISOString().slice(0, 10);
             let html = '<div class="product-grid">';
-            for (const product of productList) {
+            for (const product of pageItems) {
                 const imageHtml = product.image_uri
-                    ? `<img src="${product.image_uri}" alt="${product.name}">`
+                    ? `<img src="${product.image_uri}" alt="${escapeHtml(product.name)}">`
                     : '<span style="color: #999;">📦</span>';
+                const isNew = (product.created_at || '').slice(0, 10) === todayStr;
+                const newBadge = isNew ? '<span class="product-new-badge">Nouveau</span>' : '';
                 html += `
                     <div class="product-card" onclick="openProductModal(${product.id})">
+                        ${newBadge}
                         <div class="product-image">${imageHtml}</div>
                         <div class="product-info">
-                            <div class="product-name">${product.name}</div>
-                            <div class="product-detail">${product.category || 'Autre'}</div>
-                            <div class="product-detail">${product.barcode ? 'EAN: ' + product.barcode : 'Pas d\'EAN'}</div>
+                            <div class="product-name">${escapeHtml(product.name)}</div>
+                            <div class="product-detail">${product.barcode ? 'EAN: ' + escapeHtml(product.barcode) : 'Pas d\'EAN'}</div>
                         </div>
                     </div>
                 `;
             }
             html += '</div>';
             container.innerHTML = html;
+            renderProductsPagination(filtered.length, productsPage, totalPages);
         }
+
+        function renderProductsPagination(total, page, totalPages) {
+            const html = total === 0
+                ? `<span style="color:#999;font-size:12px;">0 produit</span>`
+                : `
+                    <button onclick="goProductsPage(1)" ${page<=1?'disabled':''}>«</button>
+                    <button onclick="goProductsPage(${page-1})" ${page<=1?'disabled':''}>‹</button>
+                    <span style="font-size:13px;color:#555;">Page ${page} / ${totalPages} — ${total} produit${total>1?'s':''}</span>
+                    <button onclick="goProductsPage(${page+1})" ${page>=totalPages?'disabled':''}>›</button>
+                    <button onclick="goProductsPage(${totalPages})" ${page>=totalPages?'disabled':''}>»</button>
+                `;
+            document.getElementById('productsPaginationTop').innerHTML = html;
+            document.getElementById('productsPaginationBottom').innerHTML = html;
+        }
+
+        function goProductsPage(p) { productsPage = Math.max(1, p); renderProducts(); }
 
         function openProductModal(productId) {
             currentProduct = productList.find(p => p.id === productId);
             if (!currentProduct) return;
 
             document.getElementById('productName').value = currentProduct.name || '';
-            document.getElementById('productCategory').value = currentProduct.category || 'Autre';
             document.getElementById('productBarcode').value = currentProduct.barcode || '';
             document.getElementById('productDLC').value = currentProduct.initial_expiry_date || '';
             document.getElementById('productAisle').value = currentProduct.aisle_id || '';
@@ -955,7 +1090,6 @@
 
             const updateData = {
                 name,
-                category: document.getElementById('productCategory').value,
                 barcode: document.getElementById('productBarcode').value || undefined,
                 initial_expiry_date: document.getElementById('productDLC').value || undefined,
                 aisle_id: document.getElementById('productAisle').value ? parseInt(document.getElementById('productAisle').value) : undefined
@@ -1007,32 +1141,6 @@
             }
         }
 
-        function displayChecks(checks) {
-            const container = document.getElementById('checks');
-            const checkList = checks || [];
-
-            if (checkList.length === 0) {
-                container.innerHTML = '<div class="empty">Aucune vérification</div>';
-                return;
-            }
-
-            let html = '<table><thead><tr><th>ID</th><th>Produit</th><th>Date</th><th>Statut</th><th>DLC</th></tr></thead><tbody>';
-            for (const check of checkList.slice(0, 100)) {
-                const statusClass = check.status === 'ok' ? '✅' : '❌';
-                html += `
-                    <tr>
-                        <td>${check.id}</td>
-                        <td>${check.product_id}</td>
-                        <td>${check.check_date}</td>
-                        <td>${statusClass} ${check.status}</td>
-                        <td>${check.next_expiry_date || '-'}</td>
-                    </tr>
-                `;
-            }
-            html += '</tbody></table>';
-            container.innerHTML = html;
-        }
-
         function displayDevices(devices) {
             const container = document.getElementById('devices');
             const deviceList = devices || [];
@@ -1042,17 +1150,20 @@
                 return;
             }
 
+            const fmt = (ts) => ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleString('fr-FR') : '—';
             let html = '';
             for (const device of deviceList) {
-                const lastSeen = new Date(device.last_seen).toLocaleString('fr-FR');
-                const createdAt = new Date(device.created_at).toLocaleString('fr-FR');
+                const createdAt = fmt(device.created_at);
+                const lastConnection = fmt(device.last_connection);
+                const lastInteraction = fmt(device.last_interaction || device.last_seen);
                 html += `
                     <div class="device-item">
                         <div class="device-info">
                             <div class="device-name" onclick="renameDevice('${device.id}', '${device.name.replace(/'/g, "\\'")}')">${device.name}</div>
                             <div class="device-meta">ID: ${device.id}</div>
-                            <div class="device-meta">Vu: ${lastSeen}</div>
-                            <div class="device-meta">Créé: ${createdAt}</div>
+                            <div class="device-meta">📅 Créé le : ${createdAt}</div>
+                            <div class="device-meta">🔌 Dernière connexion : ${lastConnection}</div>
+                            <div class="device-meta">⚡ Dernière interaction : ${lastInteraction}</div>
                         </div>
                         <div class="device-actions">
                             <button class="btn-rename" onclick="renameDevice('${device.id}', '${device.name.replace(/'/g, "\\'")}')" >✏️ Renommer</button>
@@ -1263,6 +1374,68 @@
             socket.on('checks:changed', refresh);
             socket.on('aisles:changed', refresh);
             socket.on('devices:changed', refresh);
+            socket.on('logs:changed', loadLogs);
+        }
+
+        async function loadLogs() {
+            try {
+                const res = await authFetch('/api/logs');
+                allLogs = await res.json();
+                renderLogs();
+                document.getElementById('count-logs').textContent = allLogs.length;
+            } catch (e) { console.error('loadLogs error', e); }
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('logsList');
+            if (!container) return;
+            const filterDevice = document.getElementById('logsFilterDevice').value;
+
+            // Build device filter dropdown options
+            const select = document.getElementById('logsFilterDevice');
+            const seen = new Set();
+            const devices = [];
+            for (const l of allLogs) {
+                const key = l.device_id || l.device_name || '';
+                if (!seen.has(key)) { seen.add(key); devices.push({ id: l.device_id, name: l.device_name || '(inconnu)' }); }
+            }
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Tous les appareils</option>' +
+                devices.map(d => `<option value="${d.id || ''}">${escapeHtml(d.name)}</option>`).join('');
+            select.value = currentVal;
+
+            const filtered = filterDevice
+                ? allLogs.filter(l => (l.device_id || '') === filterDevice)
+                : allLogs;
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty">Aucun log</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(l => {
+                const ts = new Date((l.created_at || '').replace(' ', 'T') + 'Z').toLocaleString('fr-FR');
+                const details = l.details ? `<pre style="margin:6px 0 0;padding:8px;background:#f7f7f7;border-radius:4px;font-size:11px;white-space:pre-wrap;word-break:break-all;">${escapeHtml(l.details)}</pre>` : '';
+                const actor = escapeHtml(l.actor || l.device_name || '—');
+                const deviceName = escapeHtml(l.device_name || '—');
+                return `
+                    <details style="background:#fff;border:1px solid #e5e5e5;border-radius:6px;padding:10px 12px;margin-bottom:6px;">
+                        <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:12px;align-items:center;">
+                            <span style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <span style="background:#6366f1;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;">${actor}</span>
+                                <span style="color:#aaa;font-size:13px;">→</span>
+                                <span style="background:#0D9488;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;">📱 ${deviceName}</span>
+                                <span style="color:#333;font-size:13px;margin-left:4px;">${escapeHtml(l.message || l.action || '')}</span>
+                            </span>
+                            <span style="color:#999;font-size:11px;white-space:nowrap;">${ts}</span>
+                        </summary>
+                        ${details}
+                    </details>`;
+            }).join('');
+        }
+
+        function escapeHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
         }
 
         // Charger au démarrage

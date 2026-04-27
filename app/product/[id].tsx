@@ -216,12 +216,12 @@ export default function EditProductScreen() {
             ]}
           >
             {[prevId, currentId, nextId].map((pId, index) => (
-              pId && <ProductEditView
+              pId ? <ProductEditView
                 key={index}
                 id={pId}
                 isActive={pId === currentId}
                 pointerEvents={pId === currentId ? 'auto' : 'none'}
-              />
+              /> : <View key={index} style={{ width: SCREEN_WIDTH }} />
             ))}
           </Animated.View>
         </GestureDetector>
@@ -444,16 +444,6 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
 
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" scrollEnabled={isActive}>
-          <Text style={{ fontSize: 16, fontWeight: 'bold', color: 'red', marginBottom: 10 }}>
-            ❌ NOM DU PRODUIT EN ROUGE
-          </Text>
-          <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 10 }}>
-            🔍 Barcode: {barcode || '(vide)'}
-          </Text>
-          <Text style={{ fontSize: 12, color: '#666', marginBottom: 20 }}>
-            Nom: {name || '(vide)'} | Image URI: {imageUri ? '✓ Défini' : '✗ Vide'}
-          </Text>
-
           <Text style={styles.label}>Photo du produit</Text>
           <TouchableOpacity
             style={styles.photoContainer}
@@ -463,13 +453,11 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
           >
             {imageUri ? (
               <>
-                {imageUri.startsWith('http') ? (
-                  <Image
-                    source={{ uri: imageUri }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
-                ) : null}
+                <Image
+                  source={{ uri: imageUri }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                />
                 <View style={styles.photoOverlay}>
                   <Ionicons name="camera" size={18} color="#FFF" />
                   <Text style={styles.photoOverlayText}>Remplacer la photo</Text>

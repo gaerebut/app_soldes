@@ -252,7 +252,7 @@ export default function CheckScreen() {
             ]}
           >
             {[prevId, currentId, nextId].map((pId, index) => (
-              pId && <ProductCheckView
+              pId ? <ProductCheckView
                 key={index}
                 id={pId}
                 isActive={pId === currentId}
@@ -262,7 +262,7 @@ export default function CheckScreen() {
                 onShowCamera={() => setShowCamera(true)}
                 onShowEditName={() => setShowEditNameModal(true)}
                 pointerEvents={pId === currentId ? 'auto' : 'none'}
-              />
+              /> : <View key={index} style={{ width: SCREEN_WIDTH }} />
             ))}
           </Animated.View>
         </GestureDetector>
@@ -382,7 +382,7 @@ function ProductCheckView({
   const cached = productDataCache.get(id);
   const [product, setProduct] = useState<Product | null>(cached?.product ?? null);
   const [ruptureHistory, setRuptureHistory] = useState<any[]>(cached?.ruptureHistory?.filter((h: any) => h.status === 'rupture') ?? []);
-  const [selectedDate, setSelectedDate] = useState((cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].next_expiry_date) ? cached.ruptureHistory[0].next_expiry_date : '');
+  const [selectedDate, setSelectedDate] = useState((cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].next_expiry_date) ? cached.ruptureHistory[0].next_expiry_date : today);
   const [showCalendar, setShowCalendar] = useState(!(cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].status === 'rupture'));
   const [isRupture, setIsRupture] = useState(!!(cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].status === 'rupture'));
   const [newRuptureDLC, setNewRuptureDLC] = useState('');
@@ -400,7 +400,7 @@ function ProductCheckView({
       setIsRupture(isRupNow);
       setShowCalendar(!isRupNow);
       setShowRuptureCalendar(isRupNow);
-      const dlc = data.ruptureHistory.length > 0 && data.ruptureHistory[0].next_expiry_date ? data.ruptureHistory[0].next_expiry_date : '';
+      const dlc = data.ruptureHistory.length > 0 && data.ruptureHistory[0].next_expiry_date ? data.ruptureHistory[0].next_expiry_date : today;
       setSelectedDate(dlc);
       const allAisles = await fetchAislesOnce();
       setAisles(allAisles);
@@ -415,7 +415,7 @@ function ProductCheckView({
     const cachedRupture = !!(cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].status === 'rupture');
     const cachedDate = (cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].next_expiry_date)
       ? cached.ruptureHistory[0].next_expiry_date
-      : '';
+      : today;
     setSelectedDate(cachedDate);
     setShowCalendar(!cachedRupture);
     setShowRuptureCalendar(cachedRupture);
@@ -489,30 +489,13 @@ function ProductCheckView({
           )}
 
           {!isRupture && (
-            <>
-              <Text style={styles.sectionTitle}>Nouvelle date de peremption</Text>
-              <TouchableOpacity style={styles.dateButton} onPress={() => setShowCalendar(!showCalendar)}>
-                <Ionicons name="calendar-outline" size={20} color="#E3001B" />
-                <Text style={[styles.dateButtonText, !selectedDate && { color: Colors.textLight }]}>
-                  {selectedDate ? formatDateFR(selectedDate) : 'Selectionner une date'}
-                </Text>
-                <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-              {showCalendar && <Calendar selectedDate={selectedDate || today} onSelectDate={(date) => { setSelectedDate(date); setShowCalendar(false); }} />}
-            </>
+            <Calendar selectedDate={selectedDate || today} onSelectDate={(date) => { setSelectedDate(date); }} />
           )}
 
           {isRupture && (
             <>
               <Text style={styles.sectionTitle}>Nouvelle date ou remettre en stock</Text>
-              <TouchableOpacity style={styles.dateButton} onPress={() => setShowRuptureCalendar(!showRuptureCalendar)}>
-                <Ionicons name="calendar-outline" size={20} color="#E3001B" />
-                <Text style={[styles.dateButtonText, !newRuptureDLC && { color: Colors.textLight }]}>
-                  {newRuptureDLC ? formatDateFR(newRuptureDLC) : 'Selectionner une date'}
-                </Text>
-                <Ionicons name={showRuptureCalendar ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-              {showRuptureCalendar && <Calendar selectedDate={newRuptureDLC || today} onSelectDate={(date) => { setNewRuptureDLC(date); setShowRuptureCalendar(false); }} />}
+              <Calendar selectedDate={newRuptureDLC} onSelectDate={(date) => { setNewRuptureDLC(date); }} />
             </>
           )}
 

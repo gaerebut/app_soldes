@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const DEVICE_ID_KEY = 'dlc_device_id';
 const SERVER_URL_KEY = 'dlc_server_url';
 const DEFAULT_SERVER_URL = 'http://192.168.1.63:3000';
 const OBSOLETE_URLS = ['http://127.0.0.1:3000', 'http://localhost:3000'];
@@ -33,12 +34,17 @@ async function getToken(): Promise<string | null> {
 }
 
 async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const [serverUrl, token] = await Promise.all([getServerUrl(), getToken()]);
+  const [serverUrl, token, deviceId] = await Promise.all([
+    getServerUrl(),
+    getToken(),
+    AsyncStorage.getItem(DEVICE_ID_KEY),
+  ]);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (deviceId) headers['X-Device-Id'] = deviceId;
   const res = await fetch(`${serverUrl}${path}`, { ...options, headers });
   if (res.status === 401) {
     await AsyncStorage.removeItem('dlc_auth_token');
@@ -63,6 +69,18 @@ export const apiClient = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || 'Erreur de connexion' };
+    return { token: data.token };
+  },
+
+  async loginAsDevice(deviceId: string, deviceName: string): Promise<{ token?: string; error?: string }> {
+    const serverUrl = await getServerUrl();
+    const res = await fetch(`${serverUrl}/api/auth/device`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, deviceName }),
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error || 'Erreur de connexion' };

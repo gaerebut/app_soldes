@@ -25,14 +25,14 @@ export default function Calendar({ selectedDate, onSelectDate }: CalendarProps) 
   const maxDateStr = toLocalDateStr(maxDate);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
-    // Start on the month of the selected date
-    const [y, m] = selectedDate.split('-').map(Number);
+    const dateToShow = selectedDate || todayStr;
+    const [y, m] = dateToShow.split('-').map(Number);
     return { year: y, month: m - 1 };
   });
 
   const canGoPrev = () => {
-    // Allow navigation to past months for testing
-    return true;
+    return calendarMonth.year > todayDate.getFullYear() ||
+      (calendarMonth.year === todayDate.getFullYear() && calendarMonth.month > todayDate.getMonth());
   };
 
   const canGoNext = () => {
@@ -79,10 +79,11 @@ export default function Calendar({ selectedDate, onSelectDate }: CalendarProps) 
         const isCurrentMonth = current.getMonth() === month;
         if (isCurrentMonth) hasCurrentMonth = true;
         const isBeyondMax = dateStr > maxDateStr;
+        const isBeforeToday = dateStr < todayStr;
         week.push({
           date: dateStr,
           day: current.getDate(),
-          disabled: isBeyondMax || !isCurrentMonth,
+          disabled: isBeyondMax || isBeforeToday || !isCurrentMonth,
           isToday: dateStr === todayStr,
           isCurrentMonth,
         });
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8, borderRadius: 8,
   },
   cellSelected: { backgroundColor: '#E3001B' },
-  cellToday: { backgroundColor: '#E3001B15' },
+  cellToday: { borderWidth: 1.5, borderColor: Colors.border },
   dayHeader: { fontSize: 12, fontWeight: '700', color: Colors.textLight },
   dayText: { fontSize: 14, fontWeight: '600', color: Colors.text },
   dayDisabled: { color: Colors.borderLight },

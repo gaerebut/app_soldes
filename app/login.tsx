@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,43 +11,55 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { Colors } from '../src/constants/theme';
 import { useAuth } from '../src/auth/AuthContext';
 import { apiClient } from '../src/api/client';
+import { getOrCreateDeviceId, getDeviceName, setDeviceName } from '../src/utils/device';
 
 export default function LoginScreen() {
   const { login } = useAuth();
-  const router = useRouter();
-  const [username, setUsername] = useState('Honfleur');
-  const [password, setPassword] = useState('Honfleur');
-  const [showPassword, setShowPassword] = useState(false);
+  const [deviceName, setDeviceNameState] = useState('');
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  const handleLogin = async () => {
-    const trimUser = username.trim();
-    const trimPass = password.trim();
-    if (!trimUser || !trimPass) {
-      Alert.alert('Champs requis', 'Veuillez remplir tous les champs.');
+  useEffect(() => {
+    getDeviceName().then((name) => {
+      setDeviceNameState(name === 'Appareil mobile' ? '' : name);
+      setInitialLoading(false);
+    });
+  }, []);
+
+  const handleContinue = async () => {
+    const trimmed = deviceName.trim();
+    if (!trimmed) {
+      Alert.alert('Nom requis', 'Veuillez donner un nom à cet appareil.');
       return;
     }
 
     setLoading(true);
     try {
-      const result = await apiClient.login(trimUser, trimPass);
+      await setDeviceName(trimmed);
+      const deviceId = await getOrCreateDeviceId();
+      const result = await apiClient.loginAsDevice(deviceId, trimmed);
       if (result.token) {
         await login(result.token);
-        // _layout.tsx détecte le changement de token et redirige automatiquement
       } else {
-        Alert.alert('Erreur', result.error || 'Identifiants incorrects.');
+        Alert.alert('Erreur', result.error || 'Impossible de se connecter.');
       }
-    } catch (error) {
-      console.error('Login error:', error);
+    } catch {
       Alert.alert('Erreur de connexion', 'Impossible de contacter le serveur. Vérifiez votre connexion réseau.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (initialLoading) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -55,7 +67,6 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        {/* Logo / Title */}
         <View style={styles.logoContainer}>
           <View style={styles.iconCircle}>
             <Ionicons name="calendar" size={40} color="#FFF" />
@@ -64,56 +75,35 @@ export default function LoginScreen() {
           <Text style={styles.subtitle}>Gestion des dates de peremption</Text>
         </View>
 
-        {/* Form */}
         <View style={styles.form}>
-          <Text style={styles.label}>Identifiant</Text>
+          <Text style={styles.label}>Nom de cet appareil</Text>
           <View style={styles.inputContainer}>
-            <Ionicons name="person-outline" size={20} color={Colors.textLight} />
+            <Ionicons name="phone-portrait-outline" size={20} color={Colors.textLight} />
             <TextInput
               style={styles.input}
-              placeholder="Votre identifiant"
+              placeholder="Ex : Gaetan, Cuisine, iPad..."
               placeholderTextColor={Colors.textLight}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
+              value={deviceName}
+              onChangeText={setDeviceNameState}
+              autoCapitalize="words"
               autoCorrect={false}
-              returnKeyType="next"
-            />
-          </View>
-
-          <Text style={styles.label}>Mot de passe</Text>
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={Colors.textLight} />
-            <TextInput
-              style={styles.input}
-              placeholder="Votre mot de passe"
-              placeholderTextColor={Colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
               returnKeyType="done"
-              onSubmitEditing={handleLogin}
+              onSubmitEditing={handleContinue}
+              autoFocus
             />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={Colors.textLight}
-              />
-            </TouchableOpacity>
           </View>
 
           <TouchableOpacity
             style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-            onPress={handleLogin}
+            onPress={handleContinue}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
               <>
-                <Ionicons name="log-in-outline" size={22} color="#FFF" />
-                <Text style={styles.loginButtonText}>Se connecter</Text>
+                <Ionicons name="arrow-forward-outline" size={22} color="#FFF" />
+                <Text style={styles.loginButtonText}>Continuer</Text>
               </>
             )}
           </TouchableOpacity>

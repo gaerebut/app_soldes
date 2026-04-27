@@ -68,14 +68,64 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_seen TEXT NOT NULL DEFAULT (datetime('now'))
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_connection TEXT,
+    last_interaction TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_checks_date ON checks(check_date);
   CREATE INDEX IF NOT EXISTS idx_checks_product ON checks(product_id);
   CREATE INDEX IF NOT EXISTS idx_products_aisle ON products(aisle_id);
   CREATE INDEX IF NOT EXISTS idx_aisles_order ON aisles(order_index);
+
+  CREATE TABLE IF NOT EXISTS activity_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT,
+    device_name TEXT,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    message TEXT NOT NULL,
+    details TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_logs_created ON activity_logs(created_at DESC);
 `);
+
+// Migration: add last_connection / last_interaction columns to devices if missing
+try {
+  const cols = db.prepare("PRAGMA table_info(devices)").all().map((c) => c.name);
+  if (!cols.includes('last_connection')) {
+    db.exec("ALTER TABLE devices ADD COLUMN last_connection TEXT");
+  }
+  if (!cols.includes('last_interaction')) {
+    db.exec("ALTER TABLE devices ADD COLUMN last_interaction TEXT");
+  }
+} catch (err) {
+  console.warn('Devices migration warning:', err.message);
+}
+
+// Migration: add actor column to activity_logs if missing + backfill from users table
+try {
+  const logCols = db.prepare("PRAGMA table_info(activity_logs)").all().map((c) => c.name);
+  if (!logCols.includes('actor')) {
+    db.exec("ALTER TABLE activity_logs ADD COLUMN actor TEXT");
+  }
+  // Backfill: entries with a device_id → mobile app user, else Backoffice
+  const mobileUser = db.prepare('SELECT login FROM users LIMIT 1').get();
+  if (mobileUser) {
+    db.prepare(`
+      UPDATE activity_logs
+      SET actor = CASE
+        WHEN device_id IS NOT NULL THEN ?
+        ELSE 'Backoffice'
+      END
+      WHERE actor IS NULL
+    `).run(mobileUser.login);
+  }
+} catch (err) {
+  console.warn('activity_logs migration warning:', err.message);
+}
 
 // Seed default user
 const existingUser = db.prepare('SELECT id FROM users WHERE login = ?').get('Honfleur');
@@ -125,6 +175,59 @@ function broadcast(event, payload) {
   io.emit(event, payload);
 }
 
+// Generic activity-log middleware: records every successful mutating API call
+function activityLogger(req, res, next) {
+  if (!['POST', 'PUT', 'DELETE'].includes(req.method)) return next();
+  if (!req.path.startsWith('/api/')) return next();
+  // Skip noisy / non-user actions
+  if (req.path === '/api/auth/login') return next();
+  if (req.path === '/api/devices' && req.method === 'POST') return next(); // device heartbeat
+  if (req.path === '/api/logs') return next();
+
+  res.on('finish', () => {
+    if (res.statusCode >= 400) return;
+    try {
+      const deviceId = req.headers['x-device-id'] || null;
+      let deviceName = null;
+      if (deviceId) {
+        const d = db.prepare('SELECT name FROM devices WHERE id = ?').get(deviceId);
+        deviceName = d?.name || null;
+      }
+      if (!deviceName) deviceName = req.user?.deviceName || req.user?.login || 'Backoffice';
+      const actor = req.user?.deviceName || req.user?.login || 'Backoffice';
+
+      const action = `${req.method} ${req.path}`;
+      const message = `${req.method} ${req.path} → ${res.statusCode}`;
+      const safeBody = req.body && typeof req.body === 'object' ? { ...req.body } : null;
+      if (safeBody) delete safeBody.password;
+      const details = {
+        params: req.params && Object.keys(req.params).length ? req.params : undefined,
+        body: safeBody && Object.keys(safeBody).length ? safeBody : undefined,
+        status: res.statusCode,
+      };
+      const ins = db.prepare(
+        `INSERT INTO activity_logs (device_id, device_name, actor, action, entity_type, entity_id, message, details)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        deviceId,
+        deviceName,
+        actor,
+        action,
+        null,
+        req.params?.id != null ? String(req.params.id) : null,
+        message,
+        JSON.stringify(details)
+      );
+      const log = db.prepare('SELECT * FROM activity_logs WHERE id = ?').get(ins.lastInsertRowid);
+      broadcast('logs:changed', { action: 'create', log });
+    } catch (err) {
+      console.warn('activityLogger error:', err.message);
+    }
+  });
+  next();
+}
+app.use(activityLogger);
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -136,10 +239,20 @@ function authenticate(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     req.user = jwt.verify(token, JWT_SECRET);
-    next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
+
+  // Track last_interaction for the device making this call (silently, no broadcast)
+  const deviceId = req.headers['x-device-id'];
+  if (deviceId) {
+    try {
+      db.prepare(
+        "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now') WHERE id = ?"
+      ).run(deviceId);
+    } catch (err) { /* ignore tracking errors */ }
+  }
+  next();
 }
 
 app.post('/api/auth/login', (req, res) => {
@@ -148,6 +261,22 @@ app.post('/api/auth/login', (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE login = ? AND password = ?').get(login, password);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ token });
+});
+
+app.post('/api/auth/device', (req, res) => {
+  const { deviceId, deviceName } = req.body;
+  if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
+  const name = (deviceName || 'Appareil mobile').trim().slice(0, 30);
+  db.prepare(`
+    INSERT INTO devices (id, name, last_connection, last_seen)
+    VALUES (?, ?, datetime('now'), datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      last_connection = datetime('now'),
+      last_seen = datetime('now')
+  `).run(deviceId, name);
+  const token = jwt.sign({ deviceId, deviceName: name }, JWT_SECRET, { expiresIn: '365d' });
   res.json({ token });
 });
 
@@ -261,11 +390,22 @@ app.post('/api/aisles/reorder', authenticate, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// ACTIVITY LOGS
+// ---------------------------------------------------------------------------
+app.get('/api/logs', authenticate, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 200, 1000);
+  const logs = db.prepare(
+    'SELECT * FROM activity_logs ORDER BY created_at DESC, id DESC LIMIT ?'
+  ).all(limit);
+  res.json(logs);
+});
+
+// ---------------------------------------------------------------------------
 // DEVICES
 // ---------------------------------------------------------------------------
 app.get('/api/devices', authenticate, (_req, res) => {
   const devices = db.prepare(
-    'SELECT id, name, created_at, last_seen FROM devices ORDER BY last_seen DESC'
+    'SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices ORDER BY last_seen DESC'
   ).all();
   res.json(devices);
 });
@@ -276,13 +416,18 @@ app.post('/api/devices', authenticate, (req, res) => {
 
   const existing = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
   if (existing) {
-    db.prepare('UPDATE devices SET last_seen = datetime(\'now\') WHERE id = ?').run(id);
-    const device = db.prepare('SELECT id, name, created_at, last_seen FROM devices WHERE id = ?').get(id);
+    db.prepare(
+      "UPDATE devices SET last_seen = datetime('now'), last_connection = datetime('now'), last_interaction = datetime('now') WHERE id = ?"
+    ).run(id);
+    const device = db.prepare('SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices WHERE id = ?').get(id);
+    broadcast('devices:changed', { action: 'connect', device });
     return res.json(device);
   }
 
-  db.prepare('INSERT INTO devices (id, name) VALUES (?, ?)').run(id, name);
-  const device = db.prepare('SELECT id, name, created_at, last_seen FROM devices WHERE id = ?').get(id);
+  db.prepare(
+    "INSERT INTO devices (id, name, last_connection, last_interaction) VALUES (?, ?, datetime('now'), datetime('now'))"
+  ).run(id, name);
+  const device = db.prepare('SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices WHERE id = ?').get(id);
   broadcast('devices:changed', { action: 'register', device });
   res.status(201).json(device);
 });
@@ -296,7 +441,7 @@ app.put('/api/devices/:id', authenticate, (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Device not found' });
 
   db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name, id);
-  const device = db.prepare('SELECT id, name, created_at, last_seen FROM devices WHERE id = ?').get(id);
+  const device = db.prepare('SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices WHERE id = ?').get(id);
   broadcast('devices:changed', { action: 'update', device });
   res.json(device);
 });
