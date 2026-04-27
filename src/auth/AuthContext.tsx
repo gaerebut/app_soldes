@@ -23,8 +23,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem(TOKEN_KEY).then((stored) => {
-      if (stored) setToken(stored);
+    AsyncStorage.getItem(TOKEN_KEY).then(async (stored) => {
+      if (stored) {
+        // Vérifier si le token est toujours valide
+        try {
+          const serverUrl = await AsyncStorage.getItem('dlc_server_url') || 'http://187.124.215.103:3000';
+          const res = await fetch(`${serverUrl}/api/devices`, {
+            headers: { 'Authorization': `Bearer ${stored}` },
+          });
+          if (res.status !== 401) {
+            setToken(stored);
+          } else {
+            // Token invalide ou expiré, on nettoie
+            await AsyncStorage.removeItem(TOKEN_KEY);
+          }
+        } catch {
+          // Pas de réseau, on garde le token et on laisse l'app gérer
+          setToken(stored);
+        }
+      }
       setIsLoading(false);
     });
     setUnauthorizedHandler(() => setToken(null));
