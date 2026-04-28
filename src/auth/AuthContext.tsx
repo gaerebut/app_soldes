@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setUnauthorizedHandler } from '../api/client';
+import { setUnauthorizedHandler, getServerUrl } from '../api/client';
 
 interface AuthState {
   token: string | null;
@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored) {
         // Vérifier si le token est toujours valide
         try {
-          const serverUrl = await AsyncStorage.getItem('dlc_server_url') || 'http://187.124.215.103:3000';
+          const serverUrl = await getServerUrl();
           const res = await fetch(`${serverUrl}/api/devices`, {
             headers: { 'Authorization': `Bearer ${stored}` },
           });

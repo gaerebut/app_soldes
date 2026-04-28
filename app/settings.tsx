@@ -26,6 +26,7 @@ import { getOrCreateDeviceId, getDeviceName, setDeviceName, registerDevice } fro
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setServerUrl } from '../src/api/client';
 import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
+import SocketManager from '../src/realtime/SocketManager';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -59,6 +60,20 @@ export default function SettingsScreen() {
   useRealtimeRefresh(['aisles:changed'], useCallback(() => {
     loadAisles();
   }, []));
+
+  // Mise à jour du nom d'appareil si le backoffice le renomme
+  useEffect(() => {
+    const off = SocketManager.on('devices:changed', async (payload) => {
+      if (payload?.action === 'update' && payload?.device?.name) {
+        const myId = await getOrCreateDeviceId();
+        if (payload.device.id === myId) {
+          setDeviceNameState(payload.device.name);
+          setEditingDeviceName(payload.device.name);
+        }
+      }
+    });
+    return off;
+  }, []);
 
   const loadServerUrl = async () => {
     const url = await AsyncStorage.getItem('dlc_server_url');
@@ -298,50 +313,6 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Device Name Modal */}
-      <Modal
-        visible={showDeviceNameModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDeviceNameModal(false)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setShowDeviceNameModal(false)}
-        >
-          <KeyboardAvoidingView
-            style={{ flex: 1, justifyContent: 'flex-end' }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          >
-            <Pressable onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalContent}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Renommer l'appareil</Text>
-                  <TouchableOpacity onPress={() => setShowDeviceNameModal(false)}>
-                    <Ionicons name="close" size={24} color={Colors.text} />
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nom de l'appareil"
-                  placeholderTextColor={Colors.textLight}
-                  value={editingDeviceName}
-                  onChangeText={setEditingDeviceName}
-                  maxLength={30}
-                  autoFocus
-                />
-                <Text style={styles.inputHint}>{editingDeviceName.length}/30 caractères</Text>
-                <TouchableOpacity
-                  style={styles.submitButton}
-                  onPress={handleSaveDeviceName}
-                >
-                  <Text style={styles.submitButtonText}>Enregistrer</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
 
       {/* Aisles Management Section */}
       <View style={styles.section}>
@@ -487,6 +458,35 @@ export default function SettingsScreen() {
         <Text style={styles.buttonDangerText}>Deconnexion</Text>
       </TouchableOpacity>
     </ScrollView>
+
+    {/* Device Name Modal */}
+    <Modal visible={showDeviceNameModal} transparent animationType="slide" onRequestClose={() => setShowDeviceNameModal(false)}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable style={styles.modalContainer} onPress={() => setShowDeviceNameModal(false)}>
+          <Pressable style={styles.modalContent} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Renommer l'appareil</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nom de l'appareil"
+              placeholderTextColor={Colors.textLight}
+              value={editingDeviceName}
+              onChangeText={setEditingDeviceName}
+              maxLength={30}
+              autoFocus
+            />
+            <Text style={[styles.inputHint, { marginTop: -12 }]}>{editingDeviceName.length}/30 caractères</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={[styles.modalButton, styles.modalButtonSecondary]} onPress={() => setShowDeviceNameModal(false)}>
+                <Text style={styles.modalButtonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.modalButtonPrimary]} onPress={handleSaveDeviceName}>
+                <Text style={styles.modalButtonText}>Enregistrer</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Modal>
 
     {/* Time Picker Modal */}
     <Modal visible={showTimePicker} transparent onRequestClose={() => setShowTimePicker(false)}>

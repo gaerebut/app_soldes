@@ -2,8 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEVICE_ID_KEY = 'dlc_device_id';
 const SERVER_URL_KEY = 'dlc_server_url';
-const DEFAULT_SERVER_URL = 'http://192.168.1.63:3000';
-const OBSOLETE_URLS = ['http://127.0.0.1:3000', 'http://localhost:3000'];
+const DEFAULT_SERVER_URL = 'https://dlc-manager.cloud';
+const OBSOLETE_URLS = [
+  'http://127.0.0.1:3000',
+  'http://localhost:3000',
+  'http://187.124.215.103:3000',
+  'http://dlc-manager.cloud',
+  'http://dlc-manager.cloud/',
+  'https://dlc-manager.cloud/',
+];
 
 let cachedServerUrl: string | null = null;
 let _onUnauthorized: (() => void) | null = null;
@@ -12,21 +19,27 @@ export function setUnauthorizedHandler(fn: () => void): void {
   _onUnauthorized = fn;
 }
 
+function isValidServerUrl(url: string): boolean {
+  return /^https?:\/\/.+/.test(url);
+}
+
 export async function getServerUrl(): Promise<string> {
   if (cachedServerUrl) return cachedServerUrl;
   const stored = await AsyncStorage.getItem(SERVER_URL_KEY);
-  if (!stored || OBSOLETE_URLS.includes(stored)) {
+  const clean = stored ? stored.replace(/\/+$/, '') : null;
+  if (!clean || !isValidServerUrl(clean) || OBSOLETE_URLS.includes(clean)) {
     cachedServerUrl = DEFAULT_SERVER_URL;
     await AsyncStorage.setItem(SERVER_URL_KEY, DEFAULT_SERVER_URL);
   } else {
-    cachedServerUrl = stored;
+    cachedServerUrl = clean;
   }
   return cachedServerUrl;
 }
 
 export async function setServerUrl(url: string): Promise<void> {
-  cachedServerUrl = url;
-  await AsyncStorage.setItem(SERVER_URL_KEY, url);
+  const clean = url.replace(/\/+$/, '');
+  cachedServerUrl = clean;
+  await AsyncStorage.setItem(SERVER_URL_KEY, clean);
 }
 
 async function getToken(): Promise<string | null> {
@@ -77,13 +90,17 @@ export const apiClient = {
 
   async loginAsDevice(deviceId: string, deviceName: string): Promise<{ token?: string; error?: string }> {
     const serverUrl = await getServerUrl();
-    const res = await fetch(`${serverUrl}/api/auth/device`, {
+    const url = `${serverUrl}/api/auth/device`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId, deviceName }),
     });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error || 'Erreur de connexion' };
+    const text = await res.text();
+    let data: any = {};
+    try { data = JSON.parse(text); } catch {}
+    if (!res.ok) return { error: data.error || `Erreur serveur (${res.status})` };
+    if (!data.token) return { error: 'Réponse invalide du serveur' };
     return { token: data.token };
   },
 

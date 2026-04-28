@@ -4,34 +4,30 @@ import {
   Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Colors } from '../src/constants/theme';
-import { useAuth } from '../src/auth/AuthContext';
 import { apiClient } from '../src/api/client';
+import { getOrCreateDeviceId, setDeviceName } from '../src/utils/device';
 
-export default function LoginScreen() {
-  const { login } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+export default function DeviceSetupScreen() {
+  const [deviceName, setDeviceNameState] = useState('');
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
-  const handleLogin = async () => {
-    const u = username.trim();
-    const p = password.trim();
-    if (!u || !p) {
-      Alert.alert('Champs requis', 'Veuillez remplir tous les champs.');
+  const handleContinue = async () => {
+    const trimmed = deviceName.trim();
+    if (!trimmed) {
+      Alert.alert('Nom requis', 'Veuillez donner un nom à cet appareil.');
       return;
     }
     setLoading(true);
     try {
-      const result = await apiClient.login(u, p);
-      if (result.token) {
-        await login(result.token);
-      } else {
-        Alert.alert('Erreur', result.error || 'Identifiants incorrects.');
-      }
-    } catch {
-      Alert.alert('Erreur de connexion', 'Impossible de contacter le serveur.');
+      await setDeviceName(trimmed);
+      const deviceId = await getOrCreateDeviceId();
+      await apiClient.devices.register(deviceId, trimmed);
+      router.replace('/');
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.message || "Impossible d'enregistrer l'appareil.");
     } finally {
       setLoading(false);
     }
@@ -45,60 +41,41 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <View style={styles.logoContainer}>
           <View style={styles.iconCircle}>
-            <Ionicons name="calendar" size={40} color="#FFF" />
+            <Ionicons name="phone-portrait-outline" size={40} color="#FFF" />
           </View>
-          <Text style={styles.title}>DLC Manager</Text>
-          <Text style={styles.subtitle}>Gestion des dates de péremption</Text>
+          <Text style={styles.title}>Cet appareil</Text>
+          <Text style={styles.subtitle}>Donnez un nom à cet appareil pour l'identifier sur le réseau</Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Identifiant</Text>
+          <Text style={styles.label}>Nom de cet appareil</Text>
           <View style={styles.inputContainer}>
-            <Ionicons name="person-outline" size={20} color={Colors.textLight} />
+            <Ionicons name="phone-portrait-outline" size={20} color={Colors.textLight} />
             <TextInput
               style={styles.input}
-              placeholder="Votre identifiant"
+              placeholder="Ex : Cuisine, Caisse, iPad..."
               placeholderTextColor={Colors.textLight}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
+              value={deviceName}
+              onChangeText={setDeviceNameState}
+              autoCapitalize="words"
               autoCorrect={false}
-              returnKeyType="next"
+              returnKeyType="done"
+              onSubmitEditing={handleContinue}
               autoFocus
             />
           </View>
 
-          <Text style={styles.label}>Mot de passe</Text>
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={Colors.textLight} />
-            <TextInput
-              style={styles.input}
-              placeholder="Votre mot de passe"
-              placeholderTextColor={Colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={Colors.textLight} />
-            </TouchableOpacity>
-          </View>
-
           <TouchableOpacity
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-            onPress={handleLogin}
+            style={[styles.continueButton, loading && styles.buttonDisabled]}
+            onPress={handleContinue}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
               <>
-                <Ionicons name="arrow-forward-outline" size={22} color="#FFF" />
-                <Text style={styles.loginButtonText}>Se connecter</Text>
+                <Ionicons name="checkmark-outline" size={22} color="#FFF" />
+                <Text style={styles.continueButtonText}>Continuer</Text>
               </>
             )}
           </TouchableOpacity>
@@ -119,7 +96,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   title: { fontSize: 28, fontWeight: '800', color: Colors.text },
-  subtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
+  subtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: 4, textAlign: 'center' },
   form: { gap: 4 },
   label: {
     fontSize: 14, fontWeight: '700', color: Colors.textSecondary,
@@ -130,12 +107,12 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingHorizontal: 14, borderWidth: 1.5, borderColor: Colors.border, gap: 10,
   },
   input: { flex: 1, paddingVertical: 14, fontSize: 16, color: Colors.text },
-  loginButton: {
+  continueButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#E3001B', padding: 16, borderRadius: 14, gap: 10, marginTop: 24,
     shadowColor: '#E3001B', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
-  loginButtonDisabled: { opacity: 0.7 },
-  loginButtonText: { color: '#FFF', fontSize: 17, fontWeight: '700' },
+  buttonDisabled: { opacity: 0.7 },
+  continueButtonText: { color: '#FFF', fontSize: 17, fontWeight: '700' },
 });

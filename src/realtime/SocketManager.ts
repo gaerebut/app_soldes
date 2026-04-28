@@ -19,10 +19,10 @@ class SocketManagerClass {
 
     this.currentUrl = url;
     this.socket = io(url, {
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: Infinity,
+      reconnectionDelay: 3000,
+      reconnectionAttempts: 10,
       timeout: 5000,
     });
 

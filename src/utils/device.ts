@@ -27,8 +27,8 @@ export async function setDeviceName(name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Le nom ne peut pas être vide');
   if (trimmed.length > 30) throw new Error('Le nom ne peut pas dépasser 30 caractères');
-  if (!/^[a-zA-Z0-9\s\-_]+$/.test(trimmed)) {
-    throw new Error('Le nom ne peut contenir que des lettres, chiffres, espaces, tirets et underscores');
+  if (!/^[a-zA-ZÀ-ÖØ-öø-ÿ0-9\s\-_']+$/.test(trimmed)) {
+    throw new Error('Le nom contient des caractères non autorisés');
   }
   await AsyncStorage.setItem(DEVICE_NAME_KEY, trimmed);
 }
