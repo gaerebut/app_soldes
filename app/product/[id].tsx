@@ -417,21 +417,29 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
           const source = new ExpoFile(uri);
           const dest = new ExpoFile(dir, fileName);
           source.copy(dest);
+
+          // Afficher immédiatement la photo locale (sans attendre l'upload)
+          setImageUri(dest.uri);
+          setShowCamera(false);
+
           const prod = productDataCache.get(id)?.product;
           if (prod) {
             let finalImageUri = dest.uri;
             try {
               const uploadResult = await apiClient.products.uploadPhoto(prod.id, dest.uri);
-              finalImageUri = uploadResult?.image_uri || dest.uri;
+              if (uploadResult?.image_uri) {
+                // Construire l'URL absolue pour l'affichage
+                const absoluteUrl = await apiClient.products.photoUrl(uploadResult.image_uri);
+                finalImageUri = absoluteUrl || dest.uri;
+                setImageUri(finalImageUri);
+              }
             } catch (error) {
               console.error('Photo upload error:', error);
             }
-            setImageUri(finalImageUri);
             await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri, prod.aisle_id);
             productDataCache.delete(id);
             fetchProductData(id);
           }
-          setShowCamera(false);
         }}
         onClose={() => setShowCamera(false)}
       />
