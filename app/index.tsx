@@ -410,16 +410,18 @@ export default function HomeScreen() {
           )}
           </ScrollView>
         ) : activeTab === 'a_traiter' && !isViewingToday && products.length === 0 ? (
-          <ScrollView scrollEnabled={false} style={{ flex: 1 }} contentContainerStyle={{ ...styles.emptyContainer, flex: undefined, flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
             {renderDateScroll()}
-            <Ionicons name="calendar-outline" size={64} color={Colors.textLight} />
-            <Text style={styles.emptyTitle}>Aucun produit</Text>
-            <Text style={styles.emptyText}>
-              Aucun {products.length === 0 ? 'produit' : products.length === 1 ? 'produit' : 'produits'} n'a de DLC au {formatDateFR(selectedDate)}.
-            </Text>
+            <View style={styles.emptyContent}>
+              <Ionicons name="calendar-outline" size={64} color={Colors.textLight} />
+              <Text style={styles.emptyTitle}>Aucun produit</Text>
+              <Text style={styles.emptyText}>
+                Aucun produit n'a de DLC au {formatDateFR(selectedDate)}.
+              </Text>
+            </View>
           </ScrollView>
         ) : activeTab === 'rupture' && ruptureProducts.length === 0 ? (
-          <ScrollView scrollEnabled={false} style={{ flex: 1 }} contentContainerStyle={{ ...styles.emptyContainer, flex: undefined, flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ ...styles.emptyContainer, flex: undefined, flexGrow: 1 }} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
             <Ionicons name="checkmark-circle-outline" size={64} color={Colors.success} />
             <Text style={styles.emptyTitle}>Aucune rupture</Text>
             <Text style={styles.emptyText}>
@@ -700,6 +702,7 @@ const styles = StyleSheet.create({
   checkedNewDate: { fontSize: 12, fontWeight: '700', color: Colors.success },
   checkedRupture: { fontSize: 12, fontWeight: '700', color: '#F59E0B' },
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 40, paddingTop: 0 },
+  emptyContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingTop: 20, paddingBottom: 80 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginTop: 10 },
   emptyText: {
     fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginTop: 4, lineHeight: 18,
