@@ -33,18 +33,18 @@ export default function ScannerScreen() {
   const zoomRef = useRef(0);
   const initialZoomRef = useRef(0);
 
-  const pinchGesture = Gesture.Pinch()
+  const panGesture = Gesture.Pan()
     .runOnJS(true)
+    .minPointers(1)
+    .maxPointers(1)
     .onStart(() => {
       initialZoomRef.current = zoomRef.current;
     })
     .onUpdate((e) => {
-      const next = Math.min(2, Math.max(0, initialZoomRef.current + (e.scale - 1) * 0.15));
+      // glisser vers le haut (translationY négatif) = zoom+
+      const next = Math.min(1, Math.max(0, initialZoomRef.current - e.translationY / 600));
       setZoom(next);
       zoomRef.current = next;
-    })
-    .onEnd(() => {
-      // zoomRef déjà à jour via onUpdate
     });
 
   const processEAN = async (ean: string) => {
@@ -65,8 +65,8 @@ export default function ScannerScreen() {
     ).catch(() => ({}));
 
     if (cache[paddedEAN]) {
-      // Product found in cache → go directly to edit screen
-      router.replace(`/product/${cache[paddedEAN]}`);
+      // Product found in cache → go to check screen
+      router.replace(`/check/${cache[paddedEAN]}`);
       return;
     }
 
@@ -77,8 +77,8 @@ export default function ScannerScreen() {
       // Update cache
       cache[paddedEAN] = existing.id;
       await AsyncStorage.setItem(BARCODE_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
-      // Product found → go directly to edit screen
-      router.replace(`/product/${existing.id}`);
+      // Product found → go to check screen
+      router.replace(`/check/${existing.id}`);
     } else {
       // Product not found → go directly to add screen
       router.replace(`/product/add?barcode=${paddedEAN}`);
@@ -123,75 +123,75 @@ export default function ScannerScreen() {
 
   return (
     <View style={styles.container}>
-      <GestureDetector gesture={pinchGesture}>
-      <CameraView
-        style={styles.camera}
-        facing="back"
-        zoom={zoom}
-        barcodeScannerSettings={{
-          barcodeTypes: [
-            'ean13',
-            'ean8',
-            'upc_a',
-            'upc_e',
-            'code128',
-            'code39',
-            'code93',
-            'itf14',
-          ],
-        }}
-        onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-      >
-        {/* Overlay */}
-        <View style={styles.overlay}>
-          {/* Close button */}
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="close" size={28} color="#FFF" />
-          </TouchableOpacity>
+      <GestureDetector gesture={panGesture}>
+        <View style={styles.camera}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            zoom={zoom}
+            barcodeScannerSettings={{
+              barcodeTypes: [
+                'ean13',
+                'ean8',
+                'upc_a',
+                'upc_e',
+                'code128',
+                'code39',
+                'code93',
+                'itf14',
+              ],
+            }}
+            onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+          />
+          <View style={styles.overlay}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="close" size={28} color="#FFF" />
+            </TouchableOpacity>
 
-          <View style={styles.zoomHint}>
-            <View style={styles.zoomHintFingers}>
-              <View style={[styles.zoomFinger, styles.zoomFingerLeft]} />
-              <View style={[styles.zoomFinger, styles.zoomFingerRight]} />
+            <View style={styles.zoomHint}>
+              <View style={styles.zoomHintFinger}>
+                <View style={styles.zoomArrowUp} />
+                <View style={styles.zoomFingerIcon} />
+                <View style={styles.zoomArrowDown} />
+              </View>
+              <Text style={styles.zoomHintText}>Glisser ↑↓ pour zoomer</Text>
             </View>
-            <Text style={styles.zoomHintText}>Pincer pour zoomer</Text>
-          </View>
 
-          <View style={styles.scanArea}>
-            <View style={[styles.corner, styles.cornerTL]} />
-            <View style={[styles.corner, styles.cornerTR]} />
-            <View style={[styles.corner, styles.cornerBL]} />
-            <View style={[styles.corner, styles.cornerBR]} />
+            <View style={styles.scanArea}>
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
+            </View>
+            <Text style={styles.scanText}>
+              Placez le code-barres dans le cadre
+            </Text>
+            {scanned && (
+              <TouchableOpacity
+                style={styles.rescanButton}
+                onPress={() => {
+                  setScanned(false);
+                  lastScannedRef.current = '';
+                }}
+              >
+                <Ionicons name="refresh" size={20} color="#FFF" />
+                <Text style={styles.rescanText}>Scanner a nouveau</Text>
+              </TouchableOpacity>
+            )}
+            {!scanned && (
+              <TouchableOpacity
+                style={styles.manualButton}
+                onPress={() => setShowManualInput(true)}
+              >
+                <Ionicons name="pencil" size={20} color="#FFF" />
+                <Text style={styles.manualButtonText}>Saisir l'EAN manuellement</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <Text style={styles.scanText}>
-            Placez le code-barres dans le cadre
-          </Text>
-          {scanned && (
-            <TouchableOpacity
-              style={styles.rescanButton}
-              onPress={() => {
-                setScanned(false);
-                lastScannedRef.current = '';
-              }}
-            >
-              <Ionicons name="refresh" size={20} color="#FFF" />
-              <Text style={styles.rescanText}>Scanner a nouveau</Text>
-            </TouchableOpacity>
-          )}
-          {!scanned && (
-            <TouchableOpacity
-              style={styles.manualButton}
-              onPress={() => setShowManualInput(true)}
-            >
-              <Ionicons name="pencil" size={20} color="#FFF" />
-              <Text style={styles.manualButtonText}>Saisir l'EAN manuellement</Text>
-            </TouchableOpacity>
-          )}
         </View>
-      </CameraView>
       </GestureDetector>
 
       {/* Modal for manual EAN input */}
@@ -272,31 +272,40 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     opacity: 0.65,
   },
-  zoomHintFingers: {
-    width: 54,
-    height: 46,
-    position: 'relative',
+  zoomHintFinger: {
+    alignItems: 'center',
+    gap: 3,
   },
-  zoomFinger: {
-    position: 'absolute',
+  zoomArrowUp: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 9,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(255,255,255,0.85)',
+  },
+  zoomFingerIcon: {
     width: 11,
-    height: 32,
+    height: 22,
     backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 7,
-    top: 7,
+    borderRadius: 6,
   },
-  zoomFingerLeft: {
-    left: 6,
-    transform: [{ rotate: '-32deg' }],
-  },
-  zoomFingerRight: {
-    right: 6,
-    transform: [{ rotate: '32deg' }],
+  zoomArrowDown: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 9,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: 'rgba(255,255,255,0.85)',
   },
   zoomHintText: {
     color: 'rgba(255,255,255,0.65)',
     fontSize: 11,
-    marginTop: 2,
+    marginTop: 4,
   },
   scanArea: {
     width: 280,

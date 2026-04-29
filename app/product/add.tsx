@@ -125,6 +125,10 @@ export default function AddProductScreen() {
       Alert.alert('Photo requise', 'Veuillez ajouter une photo du produit.');
       return;
     }
+    if (!selectedAisleId) {
+      Alert.alert('Rayon requis', 'Veuillez sélectionner un rayon.');
+      return;
+    }
 
     try {
       // 1. Create product without photo
@@ -156,7 +160,7 @@ export default function AddProductScreen() {
         await saveLastSelectedAisle(selectedAisleId);
       }
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      router.replace(`/check/${result}`);
     } catch (error) {
       console.error('Error saving product:', error);
       Alert.alert('Erreur', 'Impossible de sauvegarder le produit');
@@ -222,7 +226,7 @@ export default function AddProductScreen() {
       />
 
       {/* Aisle/Rayon */}
-      <Text style={styles.label}>Rayon (optionnel)</Text>
+      <Text style={styles.label}>Rayon *</Text>
       <TouchableOpacity
         style={styles.dateButton}
         onPress={() => setShowAisleDropdown(!showAisleDropdown)}
@@ -241,17 +245,6 @@ export default function AddProductScreen() {
 
       {showAisleDropdown && (
         <View style={styles.dropdownContent}>
-          <TouchableOpacity
-            style={styles.dropdownItem}
-            onPress={() => {
-              setSelectedAisleId(null);
-              setShowAisleDropdown(false);
-            }}
-          >
-            <Text style={[styles.dropdownItemText, !selectedAisleId && styles.dropdownItemTextActive]}>
-              Aucun rayon
-            </Text>
-          </TouchableOpacity>
           {aisles.map((aisle) => (
             <TouchableOpacity
               key={aisle.id}
