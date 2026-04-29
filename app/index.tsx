@@ -702,7 +702,7 @@ const styles = StyleSheet.create({
   checkedNewDate: { fontSize: 12, fontWeight: '700', color: Colors.success },
   checkedRupture: { fontSize: 12, fontWeight: '700', color: '#F59E0B' },
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 40, paddingTop: 0 },
-  emptyContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingTop: 20, paddingBottom: 80 },
+  emptyContent: { alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 40, paddingTop: 60, paddingBottom: 80 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.text, marginTop: 10 },
   emptyText: {
     fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginTop: 4, lineHeight: 18,
