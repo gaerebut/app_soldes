@@ -112,7 +112,6 @@ export default function EditProductScreen() {
   const [currentId, setCurrentId] = useState(Number(id));
   const [skippedIds, setSkippedIds] = useState<Set<number>>(new Set());
   const [showImageFullscreen, setShowImageFullscreen] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -240,38 +239,6 @@ export default function EditProductScreen() {
         </Pressable>
       </Modal>
 
-      <CameraCapture
-        visible={showCamera}
-        onCapture={async (uri) => {
-          const dir = new Directory(Paths.document, 'product_images');
-          if (!dir.exists) dir.create();
-          const fileName = 'photo_' + Date.now() + '.jpg';
-          const source = new ExpoFile(uri);
-          const dest = new ExpoFile(dir, fileName);
-          source.copy(dest);
-          const prod = productDataCache.get(currentId)?.product;
-          if (prod) {
-            let finalImageUri = dest.uri;
-            // Upload photo to server
-            try {
-              const uploadResult = await apiClient.products.uploadPhoto(prod.id, dest.uri);
-              finalImageUri = uploadResult?.image_uri || dest.uri;
-            } catch (error) {
-              console.error('Photo upload error (non-critical):', error);
-              // Continue with local URI if upload fails
-            }
-            // Update local state
-            setImageUri(finalImageUri);
-            // Update product in database
-            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri, prod.aisle_id);
-            productDataCache.delete(currentId);
-            fetchProductData(currentId);
-          }
-          setShowCamera(false);
-        }}
-        onClose={() => setShowCamera(false)}
-      />
-
       <Modal visible={showEditNameModal} transparent animationType="slide" onRequestClose={() => setShowEditNameModal(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setShowEditNameModal(false)}>
           <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -328,6 +295,7 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
   const [aisles, setAisles] = useState<Aisle[]>([]);
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
   const [showCalendar, setShowCalendar] = useState(true);
+  const [showCamera, setShowCamera] = useState(false);
   const [cacheVersion, setCacheVersion] = useState(0);
 
   // Editable form fields - these can be modified
@@ -364,6 +332,7 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
       setDlcDate(dlc);
       const allAisles = await getAllAisles();
       setAisles(allAisles);
+      setCacheVersion(v => v + 1);
     }
   }, [id]);
 
@@ -431,10 +400,42 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
     }
   }, [barcode]);
 
-  if (!product) return <View style={{ flex: 1, width: SCREEN_WIDTH }} />;
+  if (!product) return (
+    <View style={{ flex: 1, width: SCREEN_WIDTH, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator size="large" color="#E3001B" />
+    </View>
+  );
 
   return (
     <View style={[styles.carouselSlot, { pointerEvents }]}>
+      <CameraCapture
+        visible={showCamera}
+        onCapture={async (uri) => {
+          const dir = new Directory(Paths.document, 'product_images');
+          if (!dir.exists) dir.create();
+          const fileName = 'photo_' + Date.now() + '.jpg';
+          const source = new ExpoFile(uri);
+          const dest = new ExpoFile(dir, fileName);
+          source.copy(dest);
+          const prod = productDataCache.get(id)?.product;
+          if (prod) {
+            let finalImageUri = dest.uri;
+            try {
+              const uploadResult = await apiClient.products.uploadPhoto(prod.id, dest.uri);
+              finalImageUri = uploadResult?.image_uri || dest.uri;
+            } catch (error) {
+              console.error('Photo upload error:', error);
+            }
+            setImageUri(finalImageUri);
+            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri, prod.aisle_id);
+            productDataCache.delete(id);
+            fetchProductData(id);
+          }
+          setShowCamera(false);
+        }}
+        onClose={() => setShowCamera(false)}
+      />
+
       {isRupture && (
         <View style={styles.ruptureBanner}>
           <Ionicons name="alert-circle" size={20} color="#FFF" />
