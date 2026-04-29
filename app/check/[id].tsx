@@ -523,20 +523,6 @@ function ProductCheckView({
             </View>
           )}
 
-          <Text style={styles.sectionTitle}>Historique des ruptures</Text>
-          {ruptureHistory.length === 0 ? (
-            <View style={styles.noRuptureContainer}>
-              <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />
-              <Text style={styles.noRuptureText}>Ce produit n'a jamais ete en rupture.</Text>
-            </View>
-          ) : (
-            ruptureHistory.map((h, i) => (
-              <View key={i} style={styles.historyRow}>
-                <Ionicons name="alert-circle" size={20} color={Colors.danger} />
-                <Text style={styles.historyDate}>{formatDateFR(h.check_date)}</Text>
-              </View>
-            ))
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
