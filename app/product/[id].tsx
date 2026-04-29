@@ -296,6 +296,7 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
   const [showCalendar, setShowCalendar] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
+  const [imageKey, setImageKey] = useState(0);
   const [cacheVersion, setCacheVersion] = useState(0);
 
   // Editable form fields - these can be modified
@@ -420,6 +421,7 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
 
           // Afficher immédiatement la photo locale (sans attendre l'upload)
           setImageUri(dest.uri);
+          setImageKey(k => k + 1);
           setShowCamera(false);
 
           const prod = productDataCache.get(id)?.product;
@@ -463,6 +465,7 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
             {imageUri ? (
               <>
                 <Image
+                  key={imageKey}
                   source={{ uri: imageUri }}
                   style={{ width: '100%', height: '100%' }}
                   resizeMode="cover"
