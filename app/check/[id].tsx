@@ -516,6 +516,25 @@ function ProductCheckView({
               <Ionicons name="camera" size={16} color="#FFF" />
               <Text style={styles.changePhotoText}>Changer la photo</Text>
             </TouchableOpacity>
+
+            {/* Bouton flash étiquette — petit, en haut à droite */}
+            {product?.barcode && (
+              <TouchableOpacity
+                style={[styles.flashBadge, flashing && styles.flashBadgeActive]}
+                onPress={handleFlashEtiquette}
+                disabled={flashing || !isActive}
+                activeOpacity={0.75}
+              >
+                {flashing ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="pricetag" size={16} color="#FFF" />
+                    <Ionicons name="flash" size={11} color="#FFD700" style={styles.flashBadgeIcon} />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
             {!isRupture && (
               product.barcode && (
                 <View style={styles.eanRow}>
@@ -586,24 +605,6 @@ function ProductCheckView({
             </View>
           )}
 
-          {/* Bouton flash étiquette électronique */}
-          {product?.barcode && (
-            <TouchableOpacity
-              style={[styles.flashButton, flashing && styles.flashButtonDisabled]}
-              onPress={handleFlashEtiquette}
-              disabled={flashing || !isActive}
-              activeOpacity={0.8}
-            >
-              {flashing
-                ? <ActivityIndicator size="small" color="#FFF" />
-                : <Ionicons name="flash" size={20} color="#FFF" />
-              }
-              <Text style={styles.flashButtonText}>
-                {flashing ? 'Flash en cours…' : 'Faire flasher l\'étiquette'}
-              </Text>
-            </TouchableOpacity>
-          )}
-
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -667,7 +668,14 @@ const styles = StyleSheet.create({
   editNameInput: { backgroundColor: Colors.card, padding: 14, borderRadius: 12, fontSize: 16, color: Colors.text, borderWidth: 1.5, borderColor: Colors.border },
   editNameButtonSubmit: { backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, alignItems: 'center' },
   editNameButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  flashButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#7C3AED', padding: 14, borderRadius: 14, marginHorizontal: 20, marginBottom: 24, marginTop: 8 },
-  flashButtonDisabled: { opacity: 0.6 },
-  flashButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  flashBadge: {
+    position: 'absolute', top: 8, right: 8,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
+  },
+  flashBadgeActive: { backgroundColor: '#5B21B6', opacity: 0.8 },
+  flashBadgeIcon: { position: 'absolute', bottom: 5, right: 5 },
 });
