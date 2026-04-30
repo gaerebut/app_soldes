@@ -408,6 +408,8 @@ function ProductCheckView({
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
   const [flashing, setFlashing] = useState(false);
 
+  const FLASH_DURATION_SEC = 4;
+
   const handleFlashEtiquette = async () => {
     if (!product?.barcode) {
       Alert.alert('EAN manquant', 'Ce produit n\'a pas de code-barres EAN.');
@@ -446,7 +448,7 @@ function ProductCheckView({
         },
         body: JSON.stringify({
           configuration: {
-            duration: 4,
+            duration: FLASH_DURATION_SEC,
             realTime: true,
             color: '#ff0000',
             flashType: 30,
@@ -456,6 +458,8 @@ function ProductCheckView({
       });
       if (res.ok) {
         if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Garder le spinner pendant toute la durée du flash
+        await new Promise((resolve) => setTimeout(resolve, FLASH_DURATION_SEC * 1000));
       } else {
         const text = await res.text().catch(() => '');
         Alert.alert('Erreur Pricer', `Code ${res.status}${text ? ' : ' + text : ''}`);

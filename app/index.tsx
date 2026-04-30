@@ -175,9 +175,9 @@ export default function HomeScreen() {
     return days;
   };
 
-  // Tous les produits à flasher pour la journée sélectionnée (sans doublons)
+  // Tous les produits à flasher selon l'onglet actif (sans doublons)
   const allProductsToFlash = (() => {
-    if (activeTab !== 'a_traiter') return [];
+    if (activeTab === 'rupture') return ruptureProducts;
     const raw = isViewingToday
       ? [...overduePending, ...todayExpiryPending, ...combinedList]
       : [...pendingProducts];
@@ -192,11 +192,13 @@ export default function HomeScreen() {
     .map((p) => p.barcode)
     .filter((b): b is string => !!b);
 
+  const FLASH_DURATION_SEC = 4;
+
   const handleFlashAll = async () => {
     if (flashBarcodes.length === 0) return;
     Alert.alert(
       'Flasher les étiquettes',
-      `${flashBarcodes.length} produit${flashBarcodes.length > 1 ? 's' : ''} vont flasher en même temps.\n\nConfirmer ?`,
+      `${flashBarcodes.length} ${activeTab === 'rupture' ? 'rupture' : 'produit'}${flashBarcodes.length > 1 ? 's' : ''} vont flasher en même temps.\n\nConfirmer ?`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -233,11 +235,14 @@ export default function HomeScreen() {
                   Authorization: `Bearer ${pricerToken}`,
                 },
                 body: JSON.stringify({
-                  configuration: { duration: 4, realTime: true, color: '#ff0000', flashType: 30 },
+                  configuration: { duration: FLASH_DURATION_SEC, realTime: true, color: '#ff0000', flashType: 30 },
                   itemIds: flashBarcodes,
                 }),
               });
-              if (!res.ok) {
+              if (res.ok) {
+                // Garder le spinner pendant toute la durée du flash
+                await new Promise((resolve) => setTimeout(resolve, FLASH_DURATION_SEC * 1000));
+              } else {
                 Alert.alert('Erreur', `Impossible de flasher les étiquettes (${res.status})`);
               }
             } catch {
@@ -619,7 +624,7 @@ export default function HomeScreen() {
         )}
 
       {/* Flash All FAB */}
-      {activeTab === 'a_traiter' && !allDone && flashBarcodes.length > 0 && (
+      {!allDone && flashBarcodes.length > 0 && (activeTab === 'a_traiter' || activeTab === 'rupture') && (
         <TouchableOpacity
           style={[styles.flashAllFab, flashingAll && styles.flashAllFabActive]}
           onPress={handleFlashAll}
