@@ -356,13 +356,14 @@ app.post('/api/auth/login', async (req, res) => {
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
-  // Vérifier / renouveler le token Pricer en arrière-plan (sans bloquer la réponse)
-  refreshPricerTokenIfNeeded(user).catch((err) =>
-    console.error('[Pricer] refreshPricerTokenIfNeeded error:', err.message)
-  );
+  // Vérifier / renouveler le token Pricer et l'inclure dans la réponse
+  const pricerToken = await refreshPricerTokenIfNeeded(user).catch((err) => {
+    console.error('[Pricer] refreshPricerTokenIfNeeded error:', err.message);
+    return user.pricer_token ?? null;
+  });
 
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token });
+  res.json({ token, pricer_token: pricerToken });
 });
 
 app.post('/api/auth/device', (req, res) => {
