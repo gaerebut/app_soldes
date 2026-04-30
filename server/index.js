@@ -143,8 +143,22 @@ try {
 // Seed default user
 const existingUser = db.prepare('SELECT id FROM users WHERE login = ?').get('Honfleur');
 if (!existingUser) {
-  db.prepare('INSERT INTO users (login, password) VALUES (?, ?)').run('Honfleur', 'Honfleur');
+  db.prepare('INSERT INTO users (login, password, code_anabel, pricer_id, pricer_password) VALUES (?, ?, ?, ?, ?)').run(
+    'Honfleur', 'Honfleur',
+    '8314',
+    'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c',
+    '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ'
+  );
   console.log('Default user "Honfleur" created.');
+} else {
+  // Backfill valeurs par défaut si les colonnes sont vides
+  db.prepare(`
+    UPDATE users SET
+      code_anabel    = COALESCE(code_anabel,    '8314'),
+      pricer_id      = COALESCE(pricer_id,      'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c'),
+      pricer_password = COALESCE(pricer_password, '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ')
+    WHERE login = 'Honfleur'
+  `).run();
 }
 
 console.log('✅ Database connected');
