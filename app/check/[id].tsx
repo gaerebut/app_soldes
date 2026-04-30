@@ -22,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors } from '../../src/constants/theme';
+import { getPricerToken, getCodeAnabel } from '../../src/api/client';
 import {
   Product,
   recordCheck,
@@ -405,6 +406,49 @@ function ProductCheckView({
   const [showRuptureCalendar, setShowRuptureCalendar] = useState(!!(cached?.ruptureHistory && cached.ruptureHistory.length > 0 && cached.ruptureHistory[0].status === 'rupture'));
   const [aisles, setAisles] = useState<Aisle[]>(aislesCache ?? []);
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
+  const [flashing, setFlashing] = useState(false);
+
+  const handleFlashEtiquette = async () => {
+    if (!product?.barcode) {
+      Alert.alert('EAN manquant', 'Ce produit n\'a pas de code-barres EAN.');
+      return;
+    }
+    const [pricerToken, codeAnabel] = await Promise.all([getPricerToken(), getCodeAnabel()]);
+    if (!pricerToken || !codeAnabel) {
+      Alert.alert('Pricer non configuré', 'Le token Pricer ou le code Anabel est manquant. Reconnectez-vous.');
+      return;
+    }
+    setFlashing(true);
+    try {
+      const url = `https://${codeAnabel}.carrefour-fr.pcm.pricer-plaza.com/api/public/core/v1/flash/items`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${pricerToken}`,
+        },
+        body: JSON.stringify({
+          configuration: {
+            duration: 4,
+            realTime: true,
+            color: '#ff0000',
+            flashType: 30,
+          },
+          itemIds: [product.barcode],
+        }),
+      });
+      if (res.ok) {
+        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        const text = await res.text().catch(() => '');
+        Alert.alert('Erreur Pricer', `Code ${res.status}${text ? ' : ' + text : ''}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Erreur réseau', err.message || 'Impossible de contacter le serveur Pricer.');
+    } finally {
+      setFlashing(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     const data = await fetchProductData(id);
@@ -542,6 +586,24 @@ function ProductCheckView({
             </View>
           )}
 
+          {/* Bouton flash étiquette électronique */}
+          {product?.barcode && (
+            <TouchableOpacity
+              style={[styles.flashButton, flashing && styles.flashButtonDisabled]}
+              onPress={handleFlashEtiquette}
+              disabled={flashing || !isActive}
+              activeOpacity={0.8}
+            >
+              {flashing
+                ? <ActivityIndicator size="small" color="#FFF" />
+                : <Ionicons name="flash" size={20} color="#FFF" />
+              }
+              <Text style={styles.flashButtonText}>
+                {flashing ? 'Flash en cours…' : 'Faire flasher l\'étiquette'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -605,4 +667,7 @@ const styles = StyleSheet.create({
   editNameInput: { backgroundColor: Colors.card, padding: 14, borderRadius: 12, fontSize: 16, color: Colors.text, borderWidth: 1.5, borderColor: Colors.border },
   editNameButtonSubmit: { backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, alignItems: 'center' },
   editNameButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  flashButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#7C3AED', padding: 14, borderRadius: 14, marginHorizontal: 20, marginBottom: 24, marginTop: 8 },
+  flashButtonDisabled: { opacity: 0.6 },
+  flashButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });
