@@ -732,6 +732,67 @@
         .product-card-rupture .product-name {
             color: #dc2626;
         }
+
+        /* Bravo section */
+        .bravo-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px 24px;
+            background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+            border: 1.5px solid #86efac;
+            border-radius: 16px;
+            margin-bottom: 8px;
+        }
+        .bravo-trophy {
+            font-size: 52px;
+            margin-bottom: 10px;
+            line-height: 1;
+        }
+        .bravo-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: #15803d;
+            margin-bottom: 4px;
+        }
+        .bravo-subtitle {
+            font-size: 14px;
+            color: #16a34a;
+            font-weight: 500;
+        }
+
+        /* Nouveautés separator */
+        .nouveautes-sep {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0 4px;
+            color: #555;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .nouveautes-sep::before,
+        .nouveautes-sep::after {
+            content: '';
+            flex: 1;
+            height: 1.5px;
+            background: #e5e7eb;
+        }
+
+        /* DLC info on card */
+        .product-dlc-row {
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            margin-top: 4px;
+        }
+        .product-dlc-row.dlc-overdue { color: #dc2626; }
+        .product-dlc-row.dlc-today   { color: #d97706; }
+        .product-dlc-row.dlc-ok      { color: #16a34a; }
+        .product-dlc-row.dlc-rupture { color: #dc2626; }
     </style>
 </head>
 <body>
@@ -1056,8 +1117,63 @@
             });
         }
 
+        function formatDLCDate(dateStr) {
+            if (!dateStr) return null;
+            const [y, m, d] = dateStr.split('-');
+            return `${d}/${m}/${y}`;
+        }
+
+        function buildProductCard(product, showDLC) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const today = new Date(); today.setHours(0,0,0,0);
+            const imageHtml = product.image_uri
+                ? `<img src="${product.image_uri}" alt="${escapeHtml(product.name)}">`
+                : '<span style="color:#999;">📦</span>';
+            const isNew = (product.created_at || '').slice(0, 10) === todayStr;
+            const isRupture = ruptureProductIds.has(product.id);
+            const newBadge = isNew ? '<span class="product-new-badge">Nouveau</span>' : '';
+            const ruptureBadge = isRupture ? '<span class="product-rupture-badge">Rupture</span>' : '';
+            const badges = (isNew || isRupture) ? `<div class="product-badges">${newBadge}${ruptureBadge}</div>` : '';
+
+            let dlcHtml = '';
+            if (showDLC) {
+                if (isRupture) {
+                    dlcHtml = '<div class="product-dlc-row dlc-rupture">🔴 En rupture</div>';
+                } else if (product.initial_expiry_date) {
+                    const dlcDate = new Date(product.initial_expiry_date); dlcDate.setHours(0,0,0,0);
+                    const diff = Math.round((dlcDate - today) / 86400000);
+                    let cls = 'dlc-ok';
+                    if (diff < 0) cls = 'dlc-overdue';
+                    else if (diff === 0) cls = 'dlc-today';
+                    const label = diff < 0 ? `DLC dépassée (${formatDLCDate(product.initial_expiry_date)})`
+                                : diff === 0 ? `DLC aujourd'hui`
+                                : `DLC : ${formatDLCDate(product.initial_expiry_date)}`;
+                    dlcHtml = `<div class="product-dlc-row ${cls}">${label}</div>`;
+                } else {
+                    dlcHtml = '<div class="product-dlc-row">Pas de DLC</div>';
+                }
+            }
+
+            return `
+                <div class="product-card${isRupture ? ' product-card-rupture' : ''}" onclick="openProductModal(${product.id})">
+                    ${badges}
+                    <div class="product-image">${imageHtml}</div>
+                    <div class="product-info">
+                        <div class="product-name">${escapeHtml(product.name)}</div>
+                        <div class="product-detail">${product.barcode ? 'EAN: ' + escapeHtml(product.barcode) : 'Pas d\'EAN'}</div>
+                        ${dlcHtml}
+                    </div>
+                </div>
+            `;
+        }
+
         function renderProducts() {
             const container = document.getElementById('products');
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const today = new Date(); today.setHours(0,0,0,0);
+            const dayMs = 86400000;
+
+            // Filtered list for main section
             const filtered = filterAndSortProducts();
             const pageSize = parseInt(document.getElementById('productsPageSize')?.value || '48', 10);
             const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -1065,35 +1181,54 @@
             const start = (productsPage - 1) * pageSize;
             const pageItems = filtered.slice(start, start + pageSize);
 
-            if (filtered.length === 0) {
-                container.innerHTML = '<div class="empty">Aucun produit</div>';
-                renderProductsPagination(0, 1, 1);
-                return;
+            // Global check: are there products needing attention today?
+            const globalPendingCount = (productList || []).filter(p => {
+                if (ruptureProductIds.has(p.id)) return false;
+                const dlc = p.initial_expiry_date;
+                if (!dlc) return false;
+                const d = new Date(dlc); d.setHours(0,0,0,0);
+                return (d - today) / dayMs <= 0;
+            }).length;
+
+            // Nouveautés: products created in last 7 days
+            const sevenDaysAgo = new Date(today.getTime() - 7 * dayMs);
+            const nouveautes = (productList || [])
+                .filter(p => {
+                    const c = new Date((p.created_at || '').replace(' ', 'T') + 'Z');
+                    return c >= sevenDaysAgo;
+                })
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            let html = '';
+
+            // Trophy if nothing to handle today globally
+            if (globalPendingCount === 0) {
+                html += `<div class="bravo-section">
+                    <div class="bravo-trophy">🏆</div>
+                    <div class="bravo-title">Bravo !</div>
+                    <div class="bravo-subtitle">Aucun produit à traiter aujourd'hui.</div>
+                </div>`;
             }
 
-            const todayStr = new Date().toISOString().slice(0, 10);
-            let html = '<div class="product-grid">';
-            for (const product of pageItems) {
-                const imageHtml = product.image_uri
-                    ? `<img src="${product.image_uri}" alt="${escapeHtml(product.name)}">`
-                    : '<span style="color: #999;">📦</span>';
-                const isNew = (product.created_at || '').slice(0, 10) === todayStr;
-                const isRupture = ruptureProductIds.has(product.id);
-                const newBadge = isNew ? '<span class="product-new-badge">Nouveau</span>' : '';
-                const ruptureBadge = isRupture ? '<span class="product-rupture-badge">Rupture</span>' : '';
-                const badges = (isNew || isRupture) ? `<div class="product-badges">${newBadge}${ruptureBadge}</div>` : '';
-                html += `
-                    <div class="product-card${isRupture ? ' product-card-rupture' : ''}" onclick="openProductModal(${product.id})">
-                        ${badges}
-                        <div class="product-image">${imageHtml}</div>
-                        <div class="product-info">
-                            <div class="product-name">${escapeHtml(product.name)}</div>
-                            <div class="product-detail">${product.barcode ? 'EAN: ' + escapeHtml(product.barcode) : 'Pas d\'EAN'}</div>
-                        </div>
-                    </div>
-                `;
+            // Main filtered list
+            if (pageItems.length > 0) {
+                html += '<div class="product-grid">';
+                for (const product of pageItems) html += buildProductCard(product, false);
+                html += '</div>';
+            } else if (globalPendingCount > 0) {
+                html += '<div class="empty">Aucun produit correspondant aux filtres.</div>';
             }
-            html += '</div>';
+
+            // Nouveautés section
+            if (nouveautes.length > 0) {
+                html += `<div class="nouveautes-sep"><span>✨ Nouveautés (7 derniers jours)</span></div>`;
+                html += '<div class="product-grid">';
+                for (const product of nouveautes) html += buildProductCard(product, true);
+                html += '</div>';
+            }
+
+            if (!html) html = '<div class="empty">Aucun produit.</div>';
+
             container.innerHTML = html;
             renderProductsPagination(filtered.length, productsPage, totalPages);
         }
