@@ -37,7 +37,9 @@ db.exec(`
     password TEXT NOT NULL,
     code_anabel TEXT,
     pricer_id TEXT,
-    pricer_password TEXT
+    pricer_password TEXT,
+    pricer_token TEXT,
+    pricer_token_expireat TEXT
   );
 
   CREATE TABLE IF NOT EXISTS aisles (
@@ -136,9 +138,11 @@ try {
 // Migration: add user extra columns if missing
 try {
   const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
-  if (!userCols.includes('code_anabel'))    db.exec("ALTER TABLE users ADD COLUMN code_anabel TEXT");
-  if (!userCols.includes('pricer_id'))      db.exec("ALTER TABLE users ADD COLUMN pricer_id TEXT");
-  if (!userCols.includes('pricer_password')) db.exec("ALTER TABLE users ADD COLUMN pricer_password TEXT");
+  if (!userCols.includes('code_anabel'))         db.exec("ALTER TABLE users ADD COLUMN code_anabel TEXT");
+  if (!userCols.includes('pricer_id'))           db.exec("ALTER TABLE users ADD COLUMN pricer_id TEXT");
+  if (!userCols.includes('pricer_password'))     db.exec("ALTER TABLE users ADD COLUMN pricer_password TEXT");
+  if (!userCols.includes('pricer_token'))        db.exec("ALTER TABLE users ADD COLUMN pricer_token TEXT");
+  if (!userCols.includes('pricer_token_expireat')) db.exec("ALTER TABLE users ADD COLUMN pricer_token_expireat TEXT");
 } catch (err) {
   console.warn('Users migration warning:', err.message);
 }
@@ -325,37 +329,45 @@ app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 // ---------------------------------------------------------------------------
 // USER PROFILE (code_anabel, pricer_id, pricer_password)
 // ---------------------------------------------------------------------------
+const USER_PUBLIC_FIELDS = 'id, login, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
+
 app.get('/api/users/me', authenticate, (req, res) => {
-  const user = db.prepare('SELECT id, login, code_anabel, pricer_id, pricer_password FROM users WHERE id = ?').get(req.user.userId);
+  const user = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
 });
 
 app.put('/api/users/me', authenticate, (req, res) => {
-  const { code_anabel, pricer_id, pricer_password } = req.body;
+  const { code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat } = req.body;
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  if (code_anabel !== undefined && code_anabel !== null && String(code_anabel).length > 10)
+  if (code_anabel != null && String(code_anabel).length > 10)
     return res.status(400).json({ error: 'code_anabel max 10 caractères' });
-  if (pricer_id !== undefined && pricer_id !== null && String(pricer_id).length > 100)
+  if (pricer_id != null && String(pricer_id).length > 100)
     return res.status(400).json({ error: 'pricer_id max 100 caractères' });
-  if (pricer_password !== undefined && pricer_password !== null && String(pricer_password).length > 255)
+  if (pricer_password != null && String(pricer_password).length > 255)
     return res.status(400).json({ error: 'pricer_password max 255 caractères' });
+  if (pricer_token != null && String(pricer_token).length > 255)
+    return res.status(400).json({ error: 'pricer_token max 255 caractères' });
 
   db.prepare(`
     UPDATE users SET
-      code_anabel   = COALESCE(?, code_anabel),
-      pricer_id     = COALESCE(?, pricer_id),
-      pricer_password = COALESCE(?, pricer_password)
+      code_anabel          = COALESCE(?, code_anabel),
+      pricer_id            = COALESCE(?, pricer_id),
+      pricer_password      = COALESCE(?, pricer_password),
+      pricer_token         = COALESCE(?, pricer_token),
+      pricer_token_expireat = COALESCE(?, pricer_token_expireat)
     WHERE id = ?
   `).run(
     code_anabel ?? null,
     pricer_id ?? null,
     pricer_password ?? null,
+    pricer_token ?? null,
+    pricer_token_expireat ?? null,
     req.user.userId
   );
-  const updated = db.prepare('SELECT id, login, code_anabel, pricer_id, pricer_password FROM users WHERE id = ?').get(req.user.userId);
+  const updated = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(req.user.userId);
   res.json(updated);
 });
 
