@@ -296,6 +296,58 @@ function authenticate(req, res, next) {
   next();
 }
 
+/**
+ * Vérifie si le token Pricer en BDD est valide (existe + non expiré).
+ * Sinon en demande un nouveau via l'API IAM Pricer et le stocke en BDD.
+ * Retourne le token à jour ou null en cas d'erreur.
+ */
+async function refreshPricerTokenIfNeeded(user) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Token valide : existe et expire dans plus de 60 secondes
+  if (user.pricer_token && user.pricer_token_expireat && user.pricer_token_expireat > nowSec + 60) {
+    return user.pricer_token;
+  }
+
+  if (!user.pricer_id || !user.pricer_password) {
+    console.warn(`[Pricer] Pas de pricer_id/pricer_password pour user ${user.login}`);
+    return null;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      client_id: user.pricer_id,
+      client_secret: user.pricer_password,
+      grant_type: 'client_credentials',
+    });
+
+    const response = await fetch('https://iam.pricer-plaza.com/api/v2/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      console.error(`[Pricer] Erreur IAM ${response.status}: ${text}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const accessToken = data.access_token;
+    const expiresIn = data.expires_in ?? 3600; // secondes
+    const expireAt = nowSec + expiresIn;
+
+    db.prepare('UPDATE users SET pricer_token = ?, pricer_token_expireat = ? WHERE id = ?')
+      .run(accessToken, expireAt, user.id);
+
+    console.log(`[Pricer] Token renouvelé pour user ${user.login}, expire dans ${expiresIn}s`);
+    return accessToken;
+  } catch (err) {
+    console.error('[Pricer] Erreur lors du renouvellement du token:', err.message);
+    return null;
+  }
+}
+
 app.post('/api/auth/login', async (req, res) => {
   const { login, password } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password are required' });
@@ -303,6 +355,12 @@ app.post('/api/auth/login', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+  // Vérifier / renouveler le token Pricer en arrière-plan (sans bloquer la réponse)
+  refreshPricerTokenIfNeeded(user).catch((err) =>
+    console.error('[Pricer] refreshPricerTokenIfNeeded error:', err.message)
+  );
+
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
 });
