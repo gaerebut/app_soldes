@@ -363,7 +363,7 @@ app.post('/api/auth/login', async (req, res) => {
   });
 
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, pricer_token: pricerToken });
+  res.json({ token, pricer_token: pricerToken, code_anabel: user.code_anabel ?? null });
 });
 
 app.post('/api/auth/device', (req, res) => {

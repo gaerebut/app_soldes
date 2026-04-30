@@ -8,8 +8,13 @@ export async function getPricerToken(): Promise<string | null> {
   return AsyncStorage.getItem(PRICER_TOKEN_KEY);
 }
 
+export async function getCodeAnabel(): Promise<string | null> {
+  return AsyncStorage.getItem('dlc_code_anabel');
+}
+
 export async function clearPricerToken(): Promise<void> {
   await AsyncStorage.removeItem(PRICER_TOKEN_KEY);
+  await AsyncStorage.removeItem('dlc_code_anabel');
 }
 const DEFAULT_SERVER_URL = 'https://dlc-manager.cloud';
 const OBSOLETE_URLS = [
@@ -97,6 +102,9 @@ export const apiClient = {
     // Stocker le token Pricer s'il est présent dans la réponse
     if (data.pricer_token) {
       await AsyncStorage.setItem(PRICER_TOKEN_KEY, data.pricer_token);
+    }
+    if (data.code_anabel) {
+      await AsyncStorage.setItem('dlc_code_anabel', data.code_anabel);
     }
     return { token: data.token };
   },
