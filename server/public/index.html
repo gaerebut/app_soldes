@@ -1190,12 +1190,12 @@
                 return (d - today) / dayMs <= 0;
             }).length;
 
-            // Nouveautés: products created in last 7 days
-            const sevenDaysAgo = new Date(today.getTime() - 7 * dayMs);
+            // Nouveautés: products created in the last 24 hours
+            const oneDayAgo = new Date(Date.now() - dayMs);
             const nouveautes = (productList || [])
                 .filter(p => {
                     const c = new Date((p.created_at || '').replace(' ', 'T') + 'Z');
-                    return c >= sevenDaysAgo;
+                    return c >= oneDayAgo;
                 })
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -1221,7 +1221,7 @@
 
             // Nouveautés section
             if (nouveautes.length > 0) {
-                html += `<div class="nouveautes-sep"><span>✨ Nouveautés (7 derniers jours)</span></div>`;
+                html += `<div class="nouveautes-sep"><span>✨ Nouveautés (dernières 24h)</span></div>`;
                 html += '<div class="product-grid">';
                 for (const product of nouveautes) html += buildProductCard(product, true);
                 html += '</div>';
