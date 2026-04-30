@@ -10,8 +10,8 @@ import { apiClient } from '../src/api/client';
 
 export default function LoginScreen() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('Honfleur');
+  const [password, setPassword] = useState('Honfleur');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
