@@ -1,12 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 const multer = require('multer');
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { Server: SocketIOServer } = require('socket.io');
+
+const BCRYPT_ROUNDS = 10;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -140,22 +143,29 @@ try {
   console.warn('Users migration warning:', err.message);
 }
 
-// Seed default user
-const existingUser = db.prepare('SELECT id FROM users WHERE login = ?').get('Honfleur');
+// Seed default user (bcrypt hash synchronous at startup is acceptable — runs once)
+const existingUser = db.prepare('SELECT id, password, code_anabel FROM users WHERE login = ?').get('Honfleur');
 if (!existingUser) {
+  const hashed = bcrypt.hashSync('Honfleur', BCRYPT_ROUNDS);
   db.prepare('INSERT INTO users (login, password, code_anabel, pricer_id, pricer_password) VALUES (?, ?, ?, ?, ?)').run(
-    'Honfleur', 'Honfleur',
+    'Honfleur', hashed,
     '8314',
     'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c',
     '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ'
   );
   console.log('Default user "Honfleur" created.');
 } else {
+  // Migrer le mot de passe en clair vers bcrypt si nécessaire
+  if (!existingUser.password.startsWith('$2')) {
+    const hashed = bcrypt.hashSync(existingUser.password, BCRYPT_ROUNDS);
+    db.prepare('UPDATE users SET password = ? WHERE login = ?').run(hashed, 'Honfleur');
+    console.log('Password "Honfleur" migrated to bcrypt.');
+  }
   // Backfill valeurs par défaut si les colonnes sont vides
   db.prepare(`
     UPDATE users SET
-      code_anabel    = COALESCE(code_anabel,    '8314'),
-      pricer_id      = COALESCE(pricer_id,      'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c'),
+      code_anabel     = COALESCE(code_anabel,     '8314'),
+      pricer_id       = COALESCE(pricer_id,       'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c'),
       pricer_password = COALESCE(pricer_password, '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ')
     WHERE login = 'Honfleur'
   `).run();
@@ -282,11 +292,13 @@ function authenticate(req, res, next) {
   next();
 }
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { login, password } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password are required' });
-  const user = db.prepare('SELECT * FROM users WHERE login = ? AND password = ?').get(login, password);
+  const user = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
 });
