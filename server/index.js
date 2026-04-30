@@ -39,7 +39,7 @@ db.exec(`
     pricer_id TEXT,
     pricer_password TEXT,
     pricer_token TEXT,
-    pricer_token_expireat TEXT
+    pricer_token_expireat INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS aisles (
@@ -141,8 +141,8 @@ try {
   if (!userCols.includes('code_anabel'))         db.exec("ALTER TABLE users ADD COLUMN code_anabel TEXT");
   if (!userCols.includes('pricer_id'))           db.exec("ALTER TABLE users ADD COLUMN pricer_id TEXT");
   if (!userCols.includes('pricer_password'))     db.exec("ALTER TABLE users ADD COLUMN pricer_password TEXT");
-  if (!userCols.includes('pricer_token'))        db.exec("ALTER TABLE users ADD COLUMN pricer_token TEXT");
-  if (!userCols.includes('pricer_token_expireat')) db.exec("ALTER TABLE users ADD COLUMN pricer_token_expireat TEXT");
+  if (!userCols.includes('pricer_token'))          db.exec("ALTER TABLE users ADD COLUMN pricer_token TEXT");
+  if (!userCols.includes('pricer_token_expireat')) db.exec("ALTER TABLE users ADD COLUMN pricer_token_expireat INTEGER");
 } catch (err) {
   console.warn('Users migration warning:', err.message);
 }
@@ -350,13 +350,15 @@ app.put('/api/users/me', authenticate, (req, res) => {
     return res.status(400).json({ error: 'pricer_password max 255 caractères' });
   if (pricer_token != null && String(pricer_token).length > 255)
     return res.status(400).json({ error: 'pricer_token max 255 caractères' });
+  if (pricer_token_expireat != null && (!Number.isInteger(Number(pricer_token_expireat)) || Number(pricer_token_expireat) < 0))
+    return res.status(400).json({ error: 'pricer_token_expireat doit être un timestamp Unix (entier)' });
 
   db.prepare(`
     UPDATE users SET
-      code_anabel          = COALESCE(?, code_anabel),
-      pricer_id            = COALESCE(?, pricer_id),
-      pricer_password      = COALESCE(?, pricer_password),
-      pricer_token         = COALESCE(?, pricer_token),
+      code_anabel           = COALESCE(?, code_anabel),
+      pricer_id             = COALESCE(?, pricer_id),
+      pricer_password       = COALESCE(?, pricer_password),
+      pricer_token          = COALESCE(?, pricer_token),
       pricer_token_expireat = COALESCE(?, pricer_token_expireat)
     WHERE id = ?
   `).run(
@@ -364,7 +366,7 @@ app.put('/api/users/me', authenticate, (req, res) => {
     pricer_id ?? null,
     pricer_password ?? null,
     pricer_token ?? null,
-    pricer_token_expireat ?? null,
+    pricer_token_expireat != null ? Number(pricer_token_expireat) : null,
     req.user.userId
   );
   const updated = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(req.user.userId);
