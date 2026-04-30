@@ -63,7 +63,12 @@ export default function AddProductScreen() {
     const allAisles = await getAllAisles();
     setAisles(allAisles);
     const lastAisleId = await getLastSelectedAisle();
-    setSelectedAisleId(lastAisleId);
+    // Ne restaurer l'aisle que s'il existe encore en BDD (évite erreur FK après réinit)
+    if (lastAisleId && allAisles.some((a) => a.id === lastAisleId)) {
+      setSelectedAisleId(lastAisleId);
+    } else {
+      setSelectedAisleId(null);
+    }
   };
 
   // Fetch aussi si l'utilisateur saisit/modifie le code manuellement
