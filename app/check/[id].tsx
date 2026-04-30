@@ -19,6 +19,7 @@ import {
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors } from '../../src/constants/theme';
 import {
@@ -98,6 +99,18 @@ export default function CheckScreen() {
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const today = getTodayStr();
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Appelé quand un produit est introuvable (ex: BDD réinitialisée)
+  const handleProductNotFound = useCallback(async () => {
+    // Retrouve le code-barres lié à cet ID avant de vider le cache
+    const cacheStr = await AsyncStorage.getItem('dlc_barcode_cache').catch(() => null);
+    const cache = cacheStr ? JSON.parse(cacheStr) : {};
+    const barcode = Object.keys(cache).find((k) => cache[k] === currentId) ?? '';
+    // Vide tout le cache (les autres IDs sont aussi périmés après une réinit BDD)
+    await AsyncStorage.removeItem('dlc_barcode_cache').catch(() => {});
+    // Redirige vers l'ajout, avec le barcode si on l'a (déclenche la recherche auto)
+    router.replace(barcode ? `/product/add?barcode=${barcode}` : '/product/add');
+  }, [router, currentId]);
 
   const todayProductList = useMemo(() => {
     const navIds = ids ? ids.split(',').map(Number).filter(Boolean) : [];
@@ -261,6 +274,7 @@ export default function CheckScreen() {
                 onShowImage={() => setShowImageFullscreen(true)}
                 onShowCamera={() => setShowCamera(true)}
                 onShowEditName={() => setShowEditNameModal(true)}
+                onNotFound={handleProductNotFound}
                 pointerEvents={pId === currentId ? 'auto' : 'none'}
               /> : <View key={index} style={{ width: SCREEN_WIDTH }} />
             ))}
@@ -366,6 +380,7 @@ interface ProductCheckViewProps {
   onShowImage: () => void;
   onShowCamera: () => void;
   onShowEditName: () => void;
+  onNotFound?: () => void;
   pointerEvents: 'auto' | 'none';
 }
 
@@ -377,6 +392,7 @@ function ProductCheckView({
   onShowImage,
   onShowCamera,
   onShowEditName,
+  onNotFound,
   pointerEvents,
 }: ProductCheckViewProps) {
   const cached = productDataCache.get(id);
@@ -404,8 +420,11 @@ function ProductCheckView({
       setSelectedDate(dlc);
       const allAisles = await fetchAislesOnce();
       setAisles(allAisles);
+    } else {
+      // Produit introuvable (BDD réinitialisée ou ID invalide) → rediriger vers la création
+      onNotFound?.();
     }
-  }, [id]);
+  }, [id, onNotFound]);
 
   // Reset all state synchronously when id changes - BEFORE render
   useLayoutEffect(() => {
