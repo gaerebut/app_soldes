@@ -160,7 +160,7 @@ export default function HomeScreen() {
     today.setHours(0, 0, 0, 0);
     const days: { label: string; sublabel: string; value: string }[] = [];
     const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 30; i++) {
       const d = new Date(today.getTime() + i * 86400000);
       const value = toLocalDateStr(d);
       const label = i === 0 ? 'Auj.' : dayNames[d.getDay()];
@@ -410,7 +410,7 @@ export default function HomeScreen() {
           )}
           </ScrollView>
         ) : activeTab === 'a_traiter' && !isViewingToday && products.length === 0 ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+          <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
             {renderDateScroll()}
             <View style={styles.emptyContent}>
               <Ionicons name="calendar-outline" size={64} color={Colors.textLight} />

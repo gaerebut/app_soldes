@@ -420,11 +420,19 @@
             transition: all 0.2s;
         }
 
-        .product-new-badge {
+        .product-badges {
             position: absolute;
             top: -10px;
             right: -10px;
-            background: linear-gradient(135deg, #FF5252, #DC2626);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            z-index: 2;
+        }
+
+        .product-new-badge {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
             color: white;
             font-size: 11px;
             font-weight: 800;
@@ -437,8 +445,7 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
             transform: rotate(-8deg);
-            z-index: 2;
-            box-shadow: 0 3px 8px rgba(220, 38, 38, 0.45);
+            box-shadow: 0 3px 8px rgba(22, 163, 74, 0.45);
         }
 
         .product-card:hover {
@@ -698,6 +705,33 @@
             background: #0D9488;
             color: white;
         }
+
+        .product-rupture-badge {
+            background: linear-gradient(135deg, #dc2626, #991b1b);
+            color: white;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 5px 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 2px solid white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transform: rotate(-8deg);
+            z-index: 2;
+            box-shadow: 0 3px 8px rgba(220, 38, 38, 0.45);
+        }
+
+        .product-card-rupture {
+            border: 2px solid #dc2626;
+            background: #fff5f5;
+        }
+
+        .product-card-rupture .product-name {
+            color: #dc2626;
+        }
     </style>
 </head>
 <body>
@@ -752,6 +786,10 @@
                         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#333;cursor:pointer;">
                             <input type="checkbox" id="productsFilterNew" onchange="renderProducts()" style="cursor:pointer;">
                             Nouveaux uniquement
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#dc2626;cursor:pointer;">
+                            <input type="checkbox" id="productsFilterRupture" onchange="renderProducts()" style="cursor:pointer;">
+                            Ruptures uniquement
                         </label>
                     </div>
                     <div id="productsPaginationTop" class="products-pagination"></div>
@@ -817,14 +855,32 @@
                 </select>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="dlcFormGroup">
                 <label class="form-label">DLC initiale</label>
                 <input type="date" class="form-input" id="productDLC">
+            </div>
+
+            <div id="ruptureIndicator" style="display:none;align-items:center;gap:8px;background:#fef2f2;border:1.5px solid #dc2626;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+                <span style="font-size:18px;">⚠️</span>
+                <span style="color:#dc2626;font-weight:700;font-size:13px;">Ce produit est en rupture de stock</span>
+            </div>
+
+            <div id="liftRuptureSection" style="display:none;background:#f0fdf4;border:1.5px solid #16a34a;border-radius:6px;padding:12px 14px;margin-bottom:12px;">
+                <div style="color:#15803d;font-weight:700;font-size:13px;margin-bottom:8px;">✅ Choisir la nouvelle DLC pour lever la rupture</div>
+                <input type="date" class="form-input" id="liftRuptureDLC" style="margin-bottom:8px;">
+                <div style="display:flex;gap:8px;">
+                    <button onclick="confirmLiftRupture()" style="flex:1;padding:8px;background:#16a34a;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Confirmer</button>
+                    <button onclick="cancelLiftRupture()" style="flex:1;padding:8px;background:#f0f0f0;color:#333;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;">Annuler</button>
+                </div>
             </div>
 
             <div class="modal-actions">
                 <button class="btn-save" onclick="saveProduct()">💾 Enregistrer</button>
                 <button class="btn-delete-product" onclick="deleteProduct()">🗑️ Supprimer</button>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:8px;">
+                <button id="btnDeclareRupture" onclick="declareRupture()" style="flex:1;padding:10px;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;background:#fef2f2;color:#dc2626;">⚠️ Déclarer en rupture</button>
+                <button id="btnLiftRupture" onclick="showLiftRuptureSection()" style="flex:1;padding:10px;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px;background:#e8f5e9;color:#2e7d32;">✅ Lever la rupture</button>
             </div>
         </div>
     </div>
@@ -849,12 +905,14 @@
 
         async function loadAllData() {
             try {
-                const [aisles, products, devices, logs] = await Promise.all([
+                const [aisles, products, devices, logs, ruptures] = await Promise.all([
                     authFetch('/api/aisles').then(r => r.json()),
                     authFetch('/api/products').then(r => r.json()),
                     authFetch('/api/devices').then(r => r.json()),
                     authFetch('/api/logs').then(r => r.json()),
+                    authFetch('/api/views/ruptures').then(r => r.json()),
                 ]);
+                ruptureProductIds = new Set((ruptures || []).map(r => r.id));
 
                 allAisles = aisles || [];
                 productList = products || [];
@@ -883,6 +941,12 @@
             select.innerHTML = html;
         }
 
+        function countLogs24h(logs) {
+            if (!Array.isArray(logs)) return 0;
+            const since = Date.now() - 24 * 60 * 60 * 1000;
+            return logs.filter(l => new Date((l.created_at || '').replace(' ', 'T') + 'Z').getTime() >= since).length;
+        }
+
         function updateTabCounts(aisles, products, devices, logs) {
             const todayStr = new Date().toISOString().slice(0, 10);
             const productsToday = Array.isArray(products)
@@ -891,7 +955,7 @@
             document.getElementById('count-rayons').textContent = Array.isArray(aisles) ? aisles.length : 0;
             document.getElementById('count-produits').textContent = productsToday;
             document.getElementById('count-appareils').textContent = Array.isArray(devices) ? devices.length : 0;
-            document.getElementById('count-logs').textContent = Array.isArray(logs) ? logs.length : 0;
+            document.getElementById('count-logs').textContent = countLogs24h(logs);
         }
 
         function updateRefreshTime() {
@@ -965,6 +1029,7 @@
             const aisleId = document.getElementById('productsFilterAisle')?.value || '';
             const dlcFilter = document.getElementById('productsFilterDLC')?.value || '';
             const onlyNew = document.getElementById('productsFilterNew')?.checked || false;
+            const onlyRupture = document.getElementById('productsFilterRupture')?.checked || false;
             const today = new Date(); today.setHours(0,0,0,0);
             const todayStr = new Date().toISOString().slice(0, 10);
             const dayMs = 86400000;
@@ -973,6 +1038,7 @@
                 if (q && !((p.name || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q))) return false;
                 if (aisleId && String(p.aisle_id || '') !== aisleId) return false;
                 if (onlyNew && (p.created_at || '').slice(0, 10) !== todayStr) return false;
+                if (onlyRupture && !ruptureProductIds.has(p.id)) return false;
                 if (dlcFilter) {
                     const dlc = p.initial_expiry_date;
                     if (dlcFilter === 'none') { if (dlc) return false; }
@@ -1012,10 +1078,13 @@
                     ? `<img src="${product.image_uri}" alt="${escapeHtml(product.name)}">`
                     : '<span style="color: #999;">📦</span>';
                 const isNew = (product.created_at || '').slice(0, 10) === todayStr;
+                const isRupture = ruptureProductIds.has(product.id);
                 const newBadge = isNew ? '<span class="product-new-badge">Nouveau</span>' : '';
+                const ruptureBadge = isRupture ? '<span class="product-rupture-badge">Rupture</span>' : '';
+                const badges = (isNew || isRupture) ? `<div class="product-badges">${newBadge}${ruptureBadge}</div>` : '';
                 html += `
-                    <div class="product-card" onclick="openProductModal(${product.id})">
-                        ${newBadge}
+                    <div class="product-card${isRupture ? ' product-card-rupture' : ''}" onclick="openProductModal(${product.id})">
+                        ${badges}
                         <div class="product-image">${imageHtml}</div>
                         <div class="product-info">
                             <div class="product-name">${escapeHtml(product.name)}</div>
@@ -1060,6 +1129,14 @@
                 document.getElementById('photoPreview').innerHTML = '<span style="color: #999;">Pas de photo</span>';
             }
 
+            const isRupture = ruptureProductIds.has(currentProduct.id);
+            document.getElementById('ruptureIndicator').style.display = isRupture ? 'flex' : 'none';
+            document.getElementById('dlcFormGroup').style.display = isRupture ? 'none' : 'block';
+            document.getElementById('btnDeclareRupture').style.display = isRupture ? 'none' : 'block';
+            document.getElementById('btnLiftRupture').style.display = isRupture ? 'block' : 'none';
+            document.getElementById('liftRuptureSection').style.display = 'none';
+            document.getElementById('liftRuptureDLC').value = '';
+
             document.getElementById('productModal').classList.add('active');
         }
 
@@ -1082,6 +1159,62 @@
         }
 
         let productList = [];
+        let ruptureProductIds = new Set();
+
+        async function loadRuptures() {
+            try {
+                const res = await authFetch('/api/views/ruptures');
+                const ruptures = await res.json();
+                ruptureProductIds = new Set((ruptures || []).map(r => r.id));
+            } catch (e) { console.error('loadRuptures error', e); }
+        }
+
+        async function declareRupture() {
+            if (!currentProduct) return;
+            if (!confirm(`Déclarer "${currentProduct.name}" en rupture de stock ?`)) return;
+            const today = new Date().toISOString().slice(0, 10);
+            try {
+                const res = await authFetch('/api/checks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: currentProduct.id, check_date: today, status: 'rupture' })
+                });
+                if (!res.ok) { alert('Erreur lors de la déclaration de rupture'); return; }
+                closeProductModal();
+                await loadRuptures();
+                await loadAllData();
+            } catch (e) { console.error(e); alert('Erreur de connexion'); }
+        }
+
+        function showLiftRuptureSection() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('liftRuptureDLC').value = currentProduct.initial_expiry_date || today;
+            document.getElementById('liftRuptureSection').style.display = 'block';
+            document.getElementById('btnLiftRupture').style.display = 'none';
+        }
+
+        function cancelLiftRupture() {
+            document.getElementById('liftRuptureSection').style.display = 'none';
+            document.getElementById('btnLiftRupture').style.display = 'block';
+        }
+
+        async function confirmLiftRupture() {
+            if (!currentProduct) return;
+            const dlc = document.getElementById('liftRuptureDLC').value;
+            if (!dlc) { alert('Veuillez choisir une nouvelle DLC'); return; }
+            const today = new Date().toISOString().slice(0, 10);
+            try {
+                const res = await authFetch('/api/checks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: currentProduct.id, check_date: today, status: 'ok', next_expiry_date: dlc })
+                });
+                if (!res.ok) { alert('Erreur lors de la levée de rupture'); return; }
+                closeProductModal();
+                await loadRuptures();
+                await loadAllData();
+            } catch (e) { console.error(e); alert('Erreur de connexion'); }
+        }
 
         async function saveProduct() {
             if (!currentProduct) return;
@@ -1382,7 +1515,7 @@
                 const res = await authFetch('/api/logs');
                 allLogs = await res.json();
                 renderLogs();
-                document.getElementById('count-logs').textContent = allLogs.length;
+                document.getElementById('count-logs').textContent = countLogs24h(allLogs);
             } catch (e) { console.error('loadLogs error', e); }
         }
 

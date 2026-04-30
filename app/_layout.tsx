@@ -88,10 +88,28 @@ function RootLayoutNav() {
 
   if (isLoading) return spinner;
 
-  // Pas encore sur le bon écran, on attend la redirection
-  if (!token && segments[0] !== 'login') return spinner;
+  // La Stack doit toujours être rendue pour que le navigator connaisse les routes.
+  // Pendant la redirection, on superpose un spinner par-dessus.
+  const showOverlay = !token && segments[0] !== 'login';
 
-  return <NetworkGuard>{stack}</NetworkGuard>;
+  return (
+    <NetworkGuard>
+      {stack}
+      {showOverlay && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: Colors.background,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      )}
+    </NetworkGuard>
+  );
 }
 
 export default function RootLayout() {

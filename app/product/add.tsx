@@ -20,7 +20,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Paths, Directory, File as ExpoFile } from 'expo-file-system';
 import { Colors } from '../../src/constants/theme';
-import { addProduct } from '../../src/database/products';
+import { addProduct, recordCheck } from '../../src/database/products';
 import { apiClient } from '../../src/api/client';
 import { getTodayStr, formatDateFR } from '../../src/utils/date';
 import { fetchProductByEAN } from '../../src/utils/openfoodfacts';
@@ -45,11 +45,18 @@ export default function AddProductScreen() {
   const [aisles, setAisles] = useState<Aisle[]>([]);
   const [selectedAisleId, setSelectedAisleId] = useState<number | null>(null);
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
+  const [isRupture, setIsRupture] = useState(false);
   const lastFetchedEAN = useRef('');
 
-  // Auto-fetch when barcode changes (from scan or manual input)
   useEffect(() => {
     loadAislesAndLastSelected();
+    // Déclencher le fetch dès le montage avec le barcode scanné (évite le problème
+    // où useLocalSearchParams n'est pas encore résolu lors de l'init du useState)
+    const ean = (scannedBarcode ?? '').trim();
+    if (ean.length >= 8) {
+      lastFetchedEAN.current = ean;
+      fetchFromEAN(ean);
+    }
   }, []);
 
   const loadAislesAndLastSelected = async () => {
@@ -59,6 +66,7 @@ export default function AddProductScreen() {
     setSelectedAisleId(lastAisleId);
   };
 
+  // Fetch aussi si l'utilisateur saisit/modifie le code manuellement
   useEffect(() => {
     const ean = barcode.trim();
     if (ean.length >= 8 && ean !== lastFetchedEAN.current) {
@@ -115,7 +123,7 @@ export default function AddProductScreen() {
     setImageUri(dest.uri);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (rupture = false) => {
     const trimmed = name.trim();
     if (!trimmed) {
       Alert.alert('Nom requis', 'Veuillez saisir le nom du produit.');
@@ -131,19 +139,22 @@ export default function AddProductScreen() {
     }
 
     try {
-      // 1. Create product without photo
+      // 1. Create product
       const result = await addProduct(trimmed, 'Autre', barcode.trim() || undefined, undefined, expiryDate, selectedAisleId ?? undefined);
 
       // 2. Upload photo
       try {
         const photoResult = await apiClient.products.uploadPhoto(result, imageUri);
-        // Photo uploaded, update product with photo URL
         if (photoResult?.image_uri) {
           await apiClient.products.update(result, { image_uri: photoResult.image_uri });
         }
       } catch (photoError) {
         console.error('Photo upload error (non-critical):', photoError);
-        // Continue even if photo fails
+      }
+
+      // 3. If rupture, record it immediately
+      if (rupture) {
+        await recordCheck(result, getTodayStr(), 'rupture');
       }
 
       // Update barcode cache
@@ -183,6 +194,14 @@ export default function AddProductScreen() {
         returnKeyType="done"
       />
 
+      {/* Bandeau chargement produit */}
+      {loadingImage && (
+        <View style={styles.fetchingBanner}>
+          <ActivityIndicator size="small" color="#E3001B" />
+          <Text style={styles.fetchingBannerText}>Recherche du produit en cours…</Text>
+        </View>
+      )}
+
       {/* Photo */}
       <Text style={styles.label}>Photo du produit *</Text>
       <TouchableOpacity
@@ -193,7 +212,7 @@ export default function AddProductScreen() {
         {loadingImage && !imageUri ? (
           <View style={styles.photoPlaceholder}>
             <ActivityIndicator size="large" color="#E3001B" />
-            <Text style={styles.photoPlaceholderText}>Recherche en cours...</Text>
+            <Text style={styles.photoPlaceholderText}>Chargement…</Text>
           </View>
         ) : imageUri ? (
           <>
@@ -217,13 +236,20 @@ export default function AddProductScreen() {
 
       {/* Product name */}
       <Text style={styles.label}>Nom du produit *</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ex: Yaourt nature"
-        placeholderTextColor={Colors.textLight}
-        value={name}
-        onChangeText={setName}
-      />
+      {loadingImage && !name ? (
+        <View style={styles.skeletonInput}>
+          <ActivityIndicator size="small" color="#E3001B" style={{ marginRight: 10 }} />
+          <Text style={styles.skeletonText}>Récupération du nom…</Text>
+        </View>
+      ) : (
+        <TextInput
+          style={styles.input}
+          placeholder="Ex: Yaourt nature"
+          placeholderTextColor={Colors.textLight}
+          value={name}
+          onChangeText={setName}
+        />
+      )}
 
       {/* Aisle/Rayon */}
       <Text style={styles.label}>Rayon *</Text>
@@ -289,9 +315,15 @@ export default function AddProductScreen() {
       )}
 
       {/* Save */}
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+      <TouchableOpacity style={styles.saveButton} onPress={() => handleSave(false)}>
         <Ionicons name="checkmark" size={22} color="#FFF" />
         <Text style={styles.saveButtonText}>Valider</Text>
+      </TouchableOpacity>
+
+      {/* Rupture */}
+      <TouchableOpacity style={styles.ruptureButton} onPress={() => handleSave(true)}>
+        <Ionicons name="alert-circle-outline" size={22} color="#FFF" />
+        <Text style={styles.ruptureButtonText}>Déclarer en rupture</Text>
       </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -374,6 +406,46 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   saveButtonText: { color: '#FFF', fontSize: 17, fontWeight: '700' },
+  fetchingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFF3F3',
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  fetchingBannerText: {
+    fontSize: 13,
+    color: '#C0392B',
+    fontWeight: '600',
+    flex: 1,
+  },
+  skeletonInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    minHeight: 50,
+  },
+  skeletonText: {
+    fontSize: 15,
+    color: Colors.textLight,
+    fontStyle: 'italic',
+  },
+  ruptureButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FF6B00', padding: 16, borderRadius: 14, gap: 10, marginTop: 12,
+    shadowColor: '#FF6B00', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  ruptureButtonText: { color: '#FFF', fontSize: 17, fontWeight: '700' },
   // Fullscreen image modal
   modalContainer: {
     flex: 1,

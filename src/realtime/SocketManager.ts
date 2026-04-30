@@ -31,7 +31,7 @@ class SocketManagerClass {
     this.socket.on('connect_error', (err) => console.warn('🔌 Socket error:', err.message));
 
     // Forward server events to subscribers
-    ['products:changed', 'checks:changed', 'aisles:changed'].forEach((event) => {
+    ['products:changed', 'checks:changed', 'aisles:changed', 'devices:changed'].forEach((event) => {
       this.socket!.on(event, (payload) => {
         const subs = this.listeners.get(event);
         if (subs) subs.forEach((l) => l(payload));

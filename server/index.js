@@ -510,6 +510,9 @@ app.put('/api/products/:id', authenticate, (req, res) => {
   );
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   broadcast('products:changed', { action: 'update', product });
+  if (initial_expiry_date && initial_expiry_date !== existing.initial_expiry_date) {
+    broadcast('checks:changed', { action: 'dlc_update', productId: Number(id) });
+  }
   res.json(product);
 });
 
