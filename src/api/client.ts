@@ -2,6 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEVICE_ID_KEY = 'dlc_device_id';
 const SERVER_URL_KEY = 'dlc_server_url';
+export const PRICER_TOKEN_KEY = 'dlc_pricer_token';
+
+export async function getPricerToken(): Promise<string | null> {
+  return AsyncStorage.getItem(PRICER_TOKEN_KEY);
+}
+
+export async function clearPricerToken(): Promise<void> {
+  await AsyncStorage.removeItem(PRICER_TOKEN_KEY);
+}
 const DEFAULT_SERVER_URL = 'https://dlc-manager.cloud';
 const OBSOLETE_URLS = [
   'http://127.0.0.1:3000',
@@ -85,6 +94,10 @@ export const apiClient = {
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error || 'Erreur de connexion' };
+    // Stocker le token Pricer s'il est présent dans la réponse
+    if (data.pricer_token) {
+      await AsyncStorage.setItem(PRICER_TOKEN_KEY, data.pricer_token);
+    }
     return { token: data.token };
   },
 

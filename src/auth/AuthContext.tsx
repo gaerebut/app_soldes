@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setUnauthorizedHandler, getServerUrl } from '../api/client';
+import { setUnauthorizedHandler, getServerUrl, clearPricerToken } from '../api/client';
 
 interface AuthState {
   token: string | null;
@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await AsyncStorage.removeItem(TOKEN_KEY);
+    await clearPricerToken();
     setToken(null);
   };
 
