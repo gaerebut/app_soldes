@@ -8,7 +8,10 @@ import {
   RefreshControl,
   ScrollView,
   Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../src/constants/theme';
@@ -22,6 +25,7 @@ import {
 } from '../src/database/products';
 import { getTodayStr, formatDateShort, formatDateFR, toLocalDateStr } from '../src/utils/date';
 import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
+import { getPricerToken, getCodeAnabel, apiClient } from '../src/api/client';
 
 type Tab = 'a_traiter' | 'rupture';
 
@@ -38,6 +42,7 @@ export default function HomeScreen() {
   const [expandHistory, setExpandHistory] = useState(false);
   const [productCountByDay, setProductCountByDay] = useState<Record<string, number>>({});
   const [todayPendingCount, setTodayPendingCount] = useState(0);
+  const [flashingAll, setFlashingAll] = useState(false);
   const router = useRouter();
 
   const loadData = useCallback(async () => {
@@ -168,6 +173,82 @@ export default function HomeScreen() {
       days.push({ label, sublabel, value });
     }
     return days;
+  };
+
+  // Tous les produits à flasher pour la journée sélectionnée (sans doublons)
+  const allProductsToFlash = (() => {
+    if (activeTab !== 'a_traiter') return [];
+    const raw = isViewingToday
+      ? [...overduePending, ...todayExpiryPending, ...combinedList]
+      : [...pendingProducts];
+    const seen = new Set<number>();
+    return raw.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  })();
+  const flashBarcodes = allProductsToFlash
+    .map((p) => p.barcode)
+    .filter((b): b is string => !!b);
+
+  const handleFlashAll = async () => {
+    if (flashBarcodes.length === 0) return;
+    Alert.alert(
+      'Flasher les étiquettes',
+      `${flashBarcodes.length} produit${flashBarcodes.length > 1 ? 's' : ''} vont flasher en même temps.\n\nConfirmer ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Flasher tout',
+          onPress: async () => {
+            setFlashingAll(true);
+            try {
+              let [pricerToken, codeAnabel] = await Promise.all([
+                getPricerToken(),
+                getCodeAnabel(),
+              ]);
+              if (!pricerToken || !codeAnabel) {
+                try {
+                  const me = await apiClient.users.me();
+                  if (!codeAnabel && me?.code_anabel) {
+                    codeAnabel = me.code_anabel;
+                    await AsyncStorage.setItem('dlc_code_anabel', codeAnabel);
+                  }
+                  if (!pricerToken && me?.pricer_token) {
+                    pricerToken = me.pricer_token;
+                    await AsyncStorage.setItem('dlc_pricer_token', pricerToken);
+                  }
+                } catch {}
+              }
+              if (!pricerToken || !codeAnabel) {
+                Alert.alert('Pricer non configuré', 'Le token Pricer ou le code Anabel est manquant.');
+                return;
+              }
+              const url = `https://${codeAnabel}.carrefour-fr.pcm.pricer-plaza.com/api/public/core/v1/flash/items`;
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${pricerToken}`,
+                },
+                body: JSON.stringify({
+                  configuration: { duration: 4, realTime: true, color: '#ff0000', flashType: 30 },
+                  itemIds: flashBarcodes,
+                }),
+              });
+              if (!res.ok) {
+                Alert.alert('Erreur', `Impossible de flasher les étiquettes (${res.status})`);
+              }
+            } catch {
+              Alert.alert('Erreur', 'Une erreur est survenue lors du flash.');
+            } finally {
+              setFlashingAll(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const displayedList = activeTab === 'a_traiter' ? combinedList : ruptureProducts;
@@ -537,6 +618,29 @@ export default function HomeScreen() {
             />
         )}
 
+      {/* Flash All FAB */}
+      {activeTab === 'a_traiter' && !allDone && flashBarcodes.length > 0 && (
+        <TouchableOpacity
+          style={[styles.flashAllFab, flashingAll && styles.flashAllFabActive]}
+          onPress={handleFlashAll}
+          activeOpacity={0.8}
+          disabled={flashingAll}
+        >
+          {flashingAll ? (
+            <ActivityIndicator color="#FFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="flash" size={22} color="#FFF" />
+              <View style={styles.flashAllBadge}>
+                <Text style={styles.flashAllBadgeText}>
+                  {flashBarcodes.length > 99 ? '99+' : flashBarcodes.length}
+                </Text>
+              </View>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
       {/* Scanner FAB */}
       <TouchableOpacity
         style={styles.scanFab}
@@ -655,6 +759,25 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#E3001B', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
+  },
+  flashAllFab: {
+    position: 'absolute', bottom: 32, right: 24,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: '#7C3AED',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
+  },
+  flashAllFabActive: {
+    backgroundColor: '#5B21B6',
+  },
+  flashAllBadge: {
+    position: 'absolute', top: -4, right: -4,
+    backgroundColor: '#FFF', borderRadius: 8,
+    minWidth: 18, height: 18, paddingHorizontal: 4,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  flashAllBadgeText: {
+    fontSize: 10, fontWeight: '800', color: '#7C3AED',
   },
   congratsWrapper: { paddingHorizontal: 20, paddingVertical: 0, paddingBottom: 250 },
   congratsContainer: { alignItems: 'center', paddingTop: 40 },
