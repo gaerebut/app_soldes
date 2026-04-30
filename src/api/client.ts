@@ -138,6 +138,13 @@ export const apiClient = {
     }
   },
 
+  // Users
+  users: {
+    async me(): Promise<any> {
+      return jsonOrThrow(await authFetch('/api/users/me'));
+    },
+  },
+
   // Aisles
   aisles: {
     async list(): Promise<any[]> {

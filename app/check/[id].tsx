@@ -413,9 +413,26 @@ function ProductCheckView({
       Alert.alert('EAN manquant', 'Ce produit n\'a pas de code-barres EAN.');
       return;
     }
-    const [pricerToken, codeAnabel] = await Promise.all([getPricerToken(), getCodeAnabel()]);
+
+    let [pricerToken, codeAnabel] = await Promise.all([getPricerToken(), getCodeAnabel()]);
+
+    // Fallback : récupérer depuis le serveur si manquant en local
     if (!pricerToken || !codeAnabel) {
-      Alert.alert('Pricer non configuré', 'Le token Pricer ou le code Anabel est manquant. Reconnectez-vous.');
+      try {
+        const me = await apiClient.users.me();
+        if (!codeAnabel && me?.code_anabel) {
+          codeAnabel = me.code_anabel;
+          await AsyncStorage.setItem('dlc_code_anabel', me.code_anabel);
+        }
+        if (!pricerToken && me?.pricer_token) {
+          pricerToken = me.pricer_token;
+          await AsyncStorage.setItem('dlc_pricer_token', me.pricer_token);
+        }
+      } catch { /* silencieux */ }
+    }
+
+    if (!pricerToken || !codeAnabel) {
+      Alert.alert('Pricer non configuré', 'Le token Pricer ou le code Anabel est manquant. Vérifiez la connexion au serveur.');
       return;
     }
     setFlashing(true);
