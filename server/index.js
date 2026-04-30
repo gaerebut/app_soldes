@@ -31,7 +31,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     login TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
+    password TEXT NOT NULL,
+    code_anabel TEXT,
+    pricer_id TEXT,
+    pricer_password TEXT
   );
 
   CREATE TABLE IF NOT EXISTS aisles (
@@ -125,6 +128,16 @@ try {
   }
 } catch (err) {
   console.warn('activity_logs migration warning:', err.message);
+}
+
+// Migration: add user extra columns if missing
+try {
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!userCols.includes('code_anabel'))    db.exec("ALTER TABLE users ADD COLUMN code_anabel TEXT");
+  if (!userCols.includes('pricer_id'))      db.exec("ALTER TABLE users ADD COLUMN pricer_id TEXT");
+  if (!userCols.includes('pricer_password')) db.exec("ALTER TABLE users ADD COLUMN pricer_password TEXT");
+} catch (err) {
+  console.warn('Users migration warning:', err.message);
 }
 
 // Seed default user
@@ -282,6 +295,43 @@ app.post('/api/auth/device', (req, res) => {
 
 // Health check (used by mobile NetworkGuard)
 app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// ---------------------------------------------------------------------------
+// USER PROFILE (code_anabel, pricer_id, pricer_password)
+// ---------------------------------------------------------------------------
+app.get('/api/users/me', authenticate, (req, res) => {
+  const user = db.prepare('SELECT id, login, code_anabel, pricer_id, pricer_password FROM users WHERE id = ?').get(req.user.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+});
+
+app.put('/api/users/me', authenticate, (req, res) => {
+  const { code_anabel, pricer_id, pricer_password } = req.body;
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.user.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (code_anabel !== undefined && code_anabel !== null && String(code_anabel).length > 10)
+    return res.status(400).json({ error: 'code_anabel max 10 caractères' });
+  if (pricer_id !== undefined && pricer_id !== null && String(pricer_id).length > 100)
+    return res.status(400).json({ error: 'pricer_id max 100 caractères' });
+  if (pricer_password !== undefined && pricer_password !== null && String(pricer_password).length > 255)
+    return res.status(400).json({ error: 'pricer_password max 255 caractères' });
+
+  db.prepare(`
+    UPDATE users SET
+      code_anabel   = COALESCE(?, code_anabel),
+      pricer_id     = COALESCE(?, pricer_id),
+      pricer_password = COALESCE(?, pricer_password)
+    WHERE id = ?
+  `).run(
+    code_anabel ?? null,
+    pricer_id ?? null,
+    pricer_password ?? null,
+    req.user.userId
+  );
+  const updated = db.prepare('SELECT id, login, code_anabel, pricer_id, pricer_password FROM users WHERE id = ?').get(req.user.userId);
+  res.json(updated);
+});
 
 // ---------------------------------------------------------------------------
 // Helpers for product DLC computation
