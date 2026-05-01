@@ -116,6 +116,19 @@ try {
   console.warn('Devices migration warning:', err.message);
 }
 
+// Migration: add contact fields to users if missing
+try {
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  const newUserCols = { enseigne: 'TEXT', nom: 'TEXT', prenom: 'TEXT', telephone: 'TEXT', email: 'TEXT' };
+  for (const [col, type] of Object.entries(newUserCols)) {
+    if (!userCols.includes(col)) {
+      db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
+    }
+  }
+} catch (err) {
+  console.warn('Users migration warning:', err.message);
+}
+
 // Migration: add actor column to activity_logs if missing + backfill from users table
 try {
   const logCols = db.prepare("PRAGMA table_info(activity_logs)").all().map((c) => c.name);
@@ -397,9 +410,84 @@ app.post('/api/auth/device', (req, res) => {
 app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ---------------------------------------------------------------------------
-// USER PROFILE (code_anabel, pricer_id, pricer_password)
+// USER MANAGEMENT (admin CRUD)
 // ---------------------------------------------------------------------------
-const USER_PUBLIC_FIELDS = 'id, login, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
+const USER_PUBLIC_FIELDS = 'id, login, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
+
+app.get('/api/users', authenticate, (_req, res) => {
+  const users = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users ORDER BY id ASC`).all();
+  res.json(users);
+});
+
+app.post('/api/users', authenticate, async (req, res) => {
+  const { login, password, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password } = req.body;
+  if (!login || !password) return res.status(400).json({ error: 'login et password requis' });
+  const existing = db.prepare('SELECT id FROM users WHERE login = ?').get(login);
+  if (existing) return res.status(409).json({ error: 'Ce login existe déjà' });
+  try {
+    const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    db.prepare(`
+      INSERT INTO users (login, password, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(login, hashed, enseigne || null, nom || null, prenom || null, telephone || null, email || null, code_anabel || null, pricer_id || null, pricer_password || null);
+    const created = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE login = ?`).get(login);
+    res.status(201).json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', authenticate, async (req, res) => {
+  const { id } = req.params;
+  const { login, password, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password } = req.body;
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
+  if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  if (login) {
+    const conflict = db.prepare('SELECT id FROM users WHERE login = ? AND id != ?').get(login, id);
+    if (conflict) return res.status(409).json({ error: 'Ce login est déjà utilisé' });
+  }
+  try {
+    let hashedPassword = null;
+    if (password) hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    db.prepare(`
+      UPDATE users SET
+        login           = COALESCE(?, login),
+        password        = COALESCE(?, password),
+        enseigne        = ?,
+        nom             = ?,
+        prenom          = ?,
+        telephone       = ?,
+        email           = ?,
+        code_anabel     = ?,
+        pricer_id       = ?,
+        pricer_password = ?
+      WHERE id = ?
+    `).run(
+      login || null, hashedPassword,
+      enseigne ?? null, nom ?? null, prenom ?? null, telephone ?? null, email ?? null,
+      code_anabel ?? null, pricer_id ?? null, pricer_password ?? null,
+      id
+    );
+    const updated = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(id);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  if (req.user.userId && String(req.user.userId) === String(id))
+    return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
+  if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// USER PROFILE (self — code_anabel, pricer_id, pricer_password)
+// ---------------------------------------------------------------------------
 
 app.get('/api/users/me', authenticate, (req, res) => {
   const user = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(req.user.userId);

@@ -706,6 +706,53 @@
             color: white;
         }
 
+        /* Users tab */
+        .user-item {
+            background: white;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+        .user-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+            background: linear-gradient(135deg, #0D9488, #0D7377);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .user-info { flex: 1; min-width: 0; }
+        .user-fullname { font-size: 15px; font-weight: 700; color: #111; }
+        .user-login { font-size: 13px; color: #0D9488; font-weight: 600; margin-top: 2px; }
+        .user-meta { font-size: 12px; color: #6b7280; margin-top: 3px; }
+        .user-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: flex-start; }
+        .btn-edit-user {
+            background: #f0f0f0; color: #333; border: none;
+            padding: 6px 10px; border-radius: 6px; cursor: pointer;
+            font-size: 12px; font-weight: 600; transition: background 0.2s;
+        }
+        .btn-edit-user:hover { background: #0D9488; color: white; }
+        .btn-delete-user {
+            background: #fef2f2; color: #dc2626; border: none;
+            padding: 6px 10px; border-radius: 6px; cursor: pointer;
+            font-size: 12px; font-weight: 600; transition: background 0.2s;
+        }
+        .btn-delete-user:hover { background: #dc2626; color: white; }
+        .user-section-divider {
+            font-size: 11px; font-weight: 700; color: #9ca3af;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin: 14px 0 6px;
+        }
+
         .product-rupture-badge {
             background: linear-gradient(135deg, #dc2626, #991b1b);
             color: white;
@@ -808,6 +855,7 @@
                 <button class="tab-button active" onclick="switchTab('rayons')">🏪 Rayons <span class="tab-count" id="count-rayons">0</span></button>
                 <button class="tab-button" onclick="switchTab('produits')">📦 Produits <span class="tab-count" id="count-produits">0</span></button>
                 <button class="tab-button" onclick="switchTab('appareils')">📱 Appareils <span class="tab-count" id="count-appareils">0</span></button>
+                <button class="tab-button" onclick="switchTab('utilisateurs')">👤 Utilisateurs <span class="tab-count" id="count-utilisateurs">0</span></button>
                 <button class="tab-button" onclick="switchTab('logs')">📋 Logs <span class="tab-count" id="count-logs">0</span></button>
             </div>
 
@@ -862,6 +910,15 @@
                 <div id="appareils" class="tab-pane">
                     <div class="section-title">📱 Appareils connectés</div>
                     <div id="devices" style="flex: 1; overflow-y: auto;"></div>
+                </div>
+
+                <!-- TAB: Utilisateurs -->
+                <div id="utilisateurs" class="tab-pane">
+                    <div class="section-title">👤 Gestion des utilisateurs</div>
+                    <div style="padding:0 0 16px;">
+                        <button onclick="openUserModal()" style="background:#0D9488;color:white;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;">+ Nouvel utilisateur</button>
+                    </div>
+                    <div id="users-list" style="flex:1;overflow-y:auto;"></div>
                 </div>
 
                 <!-- TAB: Logs -->
@@ -946,6 +1003,85 @@
         </div>
     </div>
 
+    <!-- Modal Utilisateur -->
+    <div id="userModal" class="modal" onclick="if(event.target===this)closeUserModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="userModalTitle">Nouvel utilisateur</span>
+                <button class="modal-close" onclick="closeUserModal()">✕</button>
+            </div>
+
+            <input type="hidden" id="userModalId">
+
+            <div class="user-section-divider">Identité</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Prénom</label>
+                    <input type="text" class="form-input" id="uPrenom" placeholder="Jean">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Nom</label>
+                    <input type="text" class="form-input" id="uNom" placeholder="Dupont">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Enseigne</label>
+                <input type="text" class="form-input" id="uEnseigne" placeholder="Carrefour Honfleur">
+            </div>
+
+            <div class="user-section-divider">Contact</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Téléphone</label>
+                    <input type="tel" class="form-input" id="uTelephone" placeholder="06 00 00 00 00">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="uEmail" placeholder="jean@exemple.fr">
+                </div>
+            </div>
+
+            <div class="user-section-divider">Connexion app mobile</div>
+            <div class="form-group">
+                <label class="form-label">Login *</label>
+                <input type="text" class="form-input" id="uLogin" placeholder="Honfleur" autocomplete="off">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" id="uPasswordLabel">Mot de passe *</label>
+                    <input type="password" class="form-input" id="uPassword" placeholder="••••••••" autocomplete="new-password">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Confirmer</label>
+                    <input type="password" class="form-input" id="uPasswordConfirm" placeholder="••••••••" autocomplete="new-password">
+                </div>
+            </div>
+
+            <div class="user-section-divider">Pricer</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Code Anabel</label>
+                    <input type="text" class="form-input" id="uCodeAnabel" placeholder="8314">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Pricer ID</label>
+                    <input type="text" class="form-input" id="uPricerId" placeholder="ef5b2ad5-...">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Pricer Password</label>
+                <input type="password" class="form-input" id="uPricerPassword" placeholder="62ee2f8d-..." autocomplete="new-password">
+            </div>
+
+            <div id="userModalError" style="display:none;color:#dc2626;font-size:13px;margin-bottom:8px;padding:8px 12px;background:#fef2f2;border-radius:6px;"></div>
+
+            <div class="modal-actions">
+                <button class="btn-save" onclick="saveUser()">💾 Enregistrer</button>
+                <button id="btnDeleteUser" class="btn-delete-product" onclick="deleteUser()" style="display:none;">🗑️ Supprimer</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         let lastRefresh = null;
@@ -966,12 +1102,13 @@
 
         async function loadAllData() {
             try {
-                const [aisles, products, devices, logs, ruptures] = await Promise.all([
+                const [aisles, products, devices, logs, ruptures, users] = await Promise.all([
                     authFetch('/api/aisles').then(r => r.json()),
                     authFetch('/api/products').then(r => r.json()),
                     authFetch('/api/devices').then(r => r.json()),
                     authFetch('/api/logs').then(r => r.json()),
                     authFetch('/api/views/ruptures').then(r => r.json()),
+                    authFetch('/api/users').then(r => r.json()),
                 ]);
                 ruptureProductIds = new Set((ruptures || []).map(r => r.id));
 
@@ -982,8 +1119,9 @@
                 displayAisles(aisles);
                 displayProducts(products);
                 displayDevices(devices);
+                displayUsers(users);
                 renderLogs();
-                updateTabCounts(aisles, products, devices, allLogs);
+                updateTabCounts(aisles, products, devices, allLogs, users);
                 updateAisleSelect(aisles);
 
                 lastRefresh = new Date();
@@ -1008,7 +1146,7 @@
             return logs.filter(l => new Date((l.created_at || '').replace(' ', 'T') + 'Z').getTime() >= since).length;
         }
 
-        function updateTabCounts(aisles, products, devices, logs) {
+        function updateTabCounts(aisles, products, devices, logs, users) {
             const todayStr = new Date().toISOString().slice(0, 10);
             const productsToday = Array.isArray(products)
                 ? products.filter(p => (p.initial_expiry_date || '').slice(0, 10) === todayStr).length
@@ -1016,6 +1154,7 @@
             document.getElementById('count-rayons').textContent = Array.isArray(aisles) ? aisles.length : 0;
             document.getElementById('count-produits').textContent = productsToday;
             document.getElementById('count-appareils').textContent = Array.isArray(devices) ? devices.length : 0;
+            document.getElementById('count-utilisateurs').textContent = Array.isArray(users) ? users.length : 0;
             document.getElementById('count-logs').textContent = countLogs24h(logs);
         }
 
@@ -1479,6 +1618,124 @@
                 alert('Erreur de connexion');
             }
         }
+
+        // ── USERS ──────────────────────────────────────────────────────────────
+
+        function displayUsers(users) {
+            const container = document.getElementById('users-list');
+            const list = users || [];
+            if (list.length === 0) {
+                container.innerHTML = '<div class="empty">Aucun utilisateur</div>';
+                return;
+            }
+            let html = '';
+            for (const u of list) {
+                const fullname = [u.prenom, u.nom].filter(Boolean).join(' ') || '—';
+                const initials = [(u.prenom || '')[0], (u.nom || '')[0]].filter(Boolean).join('').toUpperCase() || (u.login || '?')[0].toUpperCase();
+                const meta = [u.enseigne, u.email, u.telephone].filter(Boolean).join(' · ');
+                html += `
+                <div class="user-item">
+                    <div class="user-avatar">${escapeHtml(initials)}</div>
+                    <div class="user-info">
+                        <div class="user-fullname">${escapeHtml(fullname)}</div>
+                        <div class="user-login">@${escapeHtml(u.login)}</div>
+                        ${meta ? `<div class="user-meta">${escapeHtml(meta)}</div>` : ''}
+                        ${u.code_anabel ? `<div class="user-meta" style="margin-top:4px;">🏷️ Anabel: <strong>${escapeHtml(u.code_anabel)}</strong></div>` : ''}
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn-edit-user" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Modifier</button>
+                        <button class="btn-delete-user" onclick="deleteUser(${u.id}, '${escapeHtml(u.login)}')">🗑️</button>
+                    </div>
+                </div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function openUserModal(user) {
+            const isEdit = !!user;
+            document.getElementById('userModalTitle').textContent = isEdit ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur';
+            document.getElementById('userModalId').value = isEdit ? user.id : '';
+            document.getElementById('uPrenom').value = isEdit ? (user.prenom || '') : '';
+            document.getElementById('uNom').value = isEdit ? (user.nom || '') : '';
+            document.getElementById('uEnseigne').value = isEdit ? (user.enseigne || '') : '';
+            document.getElementById('uTelephone').value = isEdit ? (user.telephone || '') : '';
+            document.getElementById('uEmail').value = isEdit ? (user.email || '') : '';
+            document.getElementById('uLogin').value = isEdit ? (user.login || '') : '';
+            document.getElementById('uPassword').value = '';
+            document.getElementById('uPasswordConfirm').value = '';
+            document.getElementById('uPasswordLabel').textContent = isEdit ? 'Nouveau mot de passe (laisser vide pour conserver)' : 'Mot de passe *';
+            document.getElementById('uCodeAnabel').value = isEdit ? (user.code_anabel || '') : '';
+            document.getElementById('uPricerId').value = isEdit ? (user.pricer_id || '') : '';
+            document.getElementById('uPricerPassword').value = isEdit ? (user.pricer_password || '') : '';
+            document.getElementById('btnDeleteUser').style.display = isEdit ? 'inline-flex' : 'none';
+            document.getElementById('btnDeleteUser').onclick = () => deleteUser(user.id, user.login);
+            document.getElementById('userModalError').style.display = 'none';
+            document.getElementById('userModal').classList.add('active');
+        }
+
+        function closeUserModal() {
+            document.getElementById('userModal').classList.remove('active');
+        }
+
+        async function saveUser() {
+            const id = document.getElementById('userModalId').value;
+            const isEdit = !!id;
+            const login = document.getElementById('uLogin').value.trim();
+            const password = document.getElementById('uPassword').value;
+            const passwordConfirm = document.getElementById('uPasswordConfirm').value;
+
+            const showError = (msg) => {
+                const el = document.getElementById('userModalError');
+                el.textContent = msg;
+                el.style.display = 'block';
+            };
+
+            if (!login) return showError('Le login est obligatoire.');
+            if (!isEdit && !password) return showError('Le mot de passe est obligatoire.');
+            if (password && password !== passwordConfirm) return showError('Les mots de passe ne correspondent pas.');
+
+            const payload = {
+                login,
+                enseigne: document.getElementById('uEnseigne').value.trim() || null,
+                nom: document.getElementById('uNom').value.trim() || null,
+                prenom: document.getElementById('uPrenom').value.trim() || null,
+                telephone: document.getElementById('uTelephone').value.trim() || null,
+                email: document.getElementById('uEmail').value.trim() || null,
+                code_anabel: document.getElementById('uCodeAnabel').value.trim() || null,
+                pricer_id: document.getElementById('uPricerId').value.trim() || null,
+                pricer_password: document.getElementById('uPricerPassword').value.trim() || null,
+            };
+            if (password) payload.password = password;
+
+            try {
+                const res = await authFetch(isEdit ? `/api/users/${id}` : '/api/users', {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                if (!res.ok) return showError(data.error || 'Erreur lors de l\'enregistrement.');
+                closeUserModal();
+                await loadAllData();
+            } catch (err) {
+                showError('Erreur de connexion.');
+            }
+        }
+
+        async function deleteUser(userId, login) {
+            if (!confirm(`Supprimer l'utilisateur "${login}" ? Cette action est irréversible.`)) return;
+            try {
+                const res = await authFetch(`/api/users/${userId}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (!res.ok) { alert(data.error || 'Erreur lors de la suppression.'); return; }
+                closeUserModal();
+                await loadAllData();
+            } catch (err) {
+                alert('Erreur de connexion.');
+            }
+        }
+
+        // ── END USERS ──────────────────────────────────────────────────────────
 
         let draggedElement = null;
 
