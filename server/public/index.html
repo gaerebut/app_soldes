@@ -741,12 +741,19 @@
             font-size: 12px; font-weight: 600; transition: background 0.2s;
         }
         .btn-edit-user:hover { background: #0D9488; color: white; }
-        .btn-delete-user {
-            background: #fef2f2; color: #dc2626; border: none;
-            padding: 6px 10px; border-radius: 6px; cursor: pointer;
+        .btn-toggle-user {
+            border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer;
             font-size: 12px; font-weight: 600; transition: background 0.2s;
         }
-        .btn-delete-user:hover { background: #dc2626; color: white; }
+        .btn-toggle-user.active { background: #fef2f2; color: #dc2626; }
+        .btn-toggle-user.active:hover { background: #dc2626; color: white; }
+        .btn-toggle-user.inactive { background: #f0fdf4; color: #16a34a; }
+        .btn-toggle-user.inactive:hover { background: #16a34a; color: white; }
+        .user-inactive-badge {
+            display: inline-block; font-size: 11px; font-weight: 700;
+            color: #dc2626; background: #fef2f2; border: 1px solid #fca5a5;
+            border-radius: 4px; padding: 2px 7px; margin-left: 6px; vertical-align: middle;
+        }
         .user-section-divider {
             font-size: 11px; font-weight: 700; color: #9ca3af;
             text-transform: uppercase; letter-spacing: 0.5px;
@@ -1077,7 +1084,6 @@
 
             <div class="modal-actions">
                 <button class="btn-save" onclick="saveUser()">💾 Enregistrer</button>
-                <button id="btnDeleteUser" class="btn-delete-product" onclick="deleteUser()" style="display:none;">🗑️ Supprimer</button>
             </div>
         </div>
     </div>
@@ -1635,18 +1641,23 @@
                 const fullname = [u.prenom, u.nom].filter(Boolean).join(' ') || '—';
                 const initials = [(u.prenom || '')[0], (u.nom || '')[0]].filter(Boolean).join('').toUpperCase() || (u.login || '?')[0].toUpperCase();
                 const meta = [u.enseigne, u.email, u.telephone].filter(Boolean).join(' · ');
+                const isActive = u.is_active !== 0;
+                const avatarStyle = isActive ? '' : 'opacity:0.4;';
+                const inactiveBadge = isActive ? '' : '<span class="user-inactive-badge">Désactivé</span>';
+                const toggleLabel = isActive ? '🔴 Désactiver' : '🟢 Activer';
+                const toggleClass = isActive ? 'active' : 'inactive';
                 html += `
-                <div class="user-item">
-                    <div class="user-avatar">${escapeHtml(initials)}</div>
+                <div class="user-item" style="${isActive ? '' : 'opacity:0.7;'}">
+                    <div class="user-avatar" style="${avatarStyle}">${escapeHtml(initials)}</div>
                     <div class="user-info">
-                        <div class="user-fullname">${escapeHtml(fullname)}</div>
+                        <div class="user-fullname">${escapeHtml(fullname)}${inactiveBadge}</div>
                         <div class="user-login">@${escapeHtml(u.login)}</div>
                         ${meta ? `<div class="user-meta">${escapeHtml(meta)}</div>` : ''}
                         ${u.code_anabel ? `<div class="user-meta" style="margin-top:4px;">🏷️ Anabel: <strong>${escapeHtml(u.code_anabel)}</strong></div>` : ''}
                     </div>
                     <div class="user-actions">
                         <button class="btn-edit-user" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Modifier</button>
-                        <button class="btn-delete-user" onclick="deleteUser(${u.id}, '${escapeHtml(u.login)}')">🗑️</button>
+                        <button class="btn-toggle-user ${toggleClass}" onclick="toggleUserActive(${u.id}, '${escapeHtml(u.login)}', ${isActive})">${toggleLabel}</button>
                     </div>
                 </div>`;
             }
@@ -1669,8 +1680,6 @@
             document.getElementById('uCodeAnabel').value = isEdit ? (user.code_anabel || '') : '';
             document.getElementById('uPricerId').value = isEdit ? (user.pricer_id || '') : '';
             document.getElementById('uPricerPassword').value = isEdit ? (user.pricer_password || '') : '';
-            document.getElementById('btnDeleteUser').style.display = isEdit ? 'inline-flex' : 'none';
-            document.getElementById('btnDeleteUser').onclick = () => deleteUser(user.id, user.login);
             document.getElementById('userModalError').style.display = 'none';
             document.getElementById('userModal').classList.add('active');
         }
@@ -1724,13 +1733,13 @@
             }
         }
 
-        async function deleteUser(userId, login) {
-            if (!confirm(`Supprimer l'utilisateur "${login}" ? Cette action est irréversible.`)) return;
+        async function toggleUserActive(userId, login, currentlyActive) {
+            const action = currentlyActive ? 'désactiver' : 'réactiver';
+            if (!confirm(`Voulez-vous ${action} le compte de "${login}" ?`)) return;
             try {
-                const res = await authFetch(`/api/users/${userId}`, { method: 'DELETE' });
+                const res = await authFetch(`/api/users/${userId}/toggle-active`, { method: 'PUT' });
                 const data = await res.json();
-                if (!res.ok) { alert(data.error || 'Erreur lors de la suppression.'); return; }
-                closeUserModal();
+                if (!res.ok) { alert(data.error || 'Erreur.'); return; }
                 await loadAllData();
             } catch (err) {
                 alert('Erreur de connexion.');

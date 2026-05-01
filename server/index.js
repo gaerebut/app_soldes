@@ -116,10 +116,13 @@ try {
   console.warn('Devices migration warning:', err.message);
 }
 
-// Migration: add contact fields to users if missing
+// Migration: add contact fields + is_active to users if missing
 try {
   const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
-  const newUserCols = { enseigne: 'TEXT', nom: 'TEXT', prenom: 'TEXT', telephone: 'TEXT', email: 'TEXT' };
+  const newUserCols = {
+    enseigne: 'TEXT', nom: 'TEXT', prenom: 'TEXT', telephone: 'TEXT', email: 'TEXT',
+    is_active: 'INTEGER NOT NULL DEFAULT 1',
+  };
   for (const [col, type] of Object.entries(newUserCols)) {
     if (!userCols.includes(col)) {
       db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
@@ -379,6 +382,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+  if (user.is_active === 0) return res.status(403).json({ error: 'Compte désactivé. Veuillez contacter votre administrateur.' });
 
   // Vérifier / renouveler le token Pricer et l'inclure dans la réponse
   const pricerToken = await refreshPricerTokenIfNeeded(user).catch((err) => {
@@ -412,7 +416,7 @@ app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 // ---------------------------------------------------------------------------
 // USER MANAGEMENT (admin CRUD)
 // ---------------------------------------------------------------------------
-const USER_PUBLIC_FIELDS = 'id, login, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
+const USER_PUBLIC_FIELDS = 'id, login, is_active, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
 
 app.get('/api/users', authenticate, (_req, res) => {
   const users = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users ORDER BY id ASC`).all();
@@ -475,14 +479,16 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', authenticate, (req, res) => {
+app.put('/api/users/:id/toggle-active', authenticate, (req, res) => {
   const { id } = req.params;
   if (req.user.userId && String(req.user.userId) === String(id))
-    return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
-  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
+    return res.status(400).json({ error: 'Vous ne pouvez pas désactiver votre propre compte' });
+  const user = db.prepare('SELECT id, is_active FROM users WHERE id = ?').get(id);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
-  db.prepare('DELETE FROM users WHERE id = ?').run(id);
-  res.json({ ok: true });
+  const newState = user.is_active === 0 ? 1 : 0;
+  db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(newState, id);
+  const updated = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(id);
+  res.json(updated);
 });
 
 // ---------------------------------------------------------------------------
