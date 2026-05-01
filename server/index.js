@@ -538,8 +538,9 @@ app.get('/api/users/me', authenticate, (req, res) => {
   res.json(user);
 });
 
-app.put('/api/users/me', authenticate, (req, res) => {
-  const { code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat } = req.body;
+app.put('/api/users/me', authenticate, async (req, res) => {
+  const { nom, prenom, enseigne, telephone, email, password,
+          code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat } = req.body;
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.user.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -554,8 +555,17 @@ app.put('/api/users/me', authenticate, (req, res) => {
   if (pricer_token_expireat != null && (!Number.isInteger(Number(pricer_token_expireat)) || Number(pricer_token_expireat) < 0))
     return res.status(400).json({ error: 'pricer_token_expireat doit être un timestamp Unix (entier)' });
 
+  let hashedPassword = null;
+  if (password) hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
   db.prepare(`
     UPDATE users SET
+      nom                   = COALESCE(?, nom),
+      prenom                = COALESCE(?, prenom),
+      enseigne              = COALESCE(?, enseigne),
+      telephone             = COALESCE(?, telephone),
+      email                 = COALESCE(?, email),
+      password              = COALESCE(?, password),
       code_anabel           = COALESCE(?, code_anabel),
       pricer_id             = COALESCE(?, pricer_id),
       pricer_password       = COALESCE(?, pricer_password),
@@ -563,6 +573,12 @@ app.put('/api/users/me', authenticate, (req, res) => {
       pricer_token_expireat = COALESCE(?, pricer_token_expireat)
     WHERE id = ?
   `).run(
+    nom ?? null,
+    prenom ?? null,
+    enseigne ?? null,
+    telephone ?? null,
+    email ?? null,
+    hashedPassword,
     code_anabel ?? null,
     pricer_id ?? null,
     pricer_password ?? null,

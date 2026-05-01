@@ -905,12 +905,61 @@
             border-radius: 4px; padding: 2px 6px; margin-left: 6px;
             vertical-align: middle; text-transform: uppercase; letter-spacing: 0.3px;
         }
+
+        /* Header layout */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-left { flex: 1; }
+        .btn-mon-compte {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border: 1.5px solid rgba(255,255,255,0.5);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background 0.2s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-mon-compte:hover { background: rgba(255,255,255,0.28); }
+
+        /* Mon compte modal */
+        .mon-compte-section-title {
+            font-size: 11px; font-weight: 700; color: #6b7280;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin: 16px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;
+        }
+        .form-input[readonly] {
+            background: #f3f4f6; color: #9ca3af; cursor: not-allowed;
+        }
+        .pricer-sync-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px; background: #f9fafb;
+            border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 4px;
+        }
+        .pricer-led {
+            width: 12px; height: 12px; border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: 0 0 6px currentColor;
+        }
+        .pricer-led.green { background: #22c55e; color: #22c55e; }
+        .pricer-led.red   { background: #ef4444; color: #ef4444; }
+        .pricer-sync-label { font-size: 13px; font-weight: 600; }
+        .pricer-sync-detail { font-size: 12px; color: #6b7280; }
     </style>
 </head>
 <body>
     <header>
-        <h1>📊 DLC Manager - Back Office</h1>
-        <p class="subtitle">Gestion centralisée des données de synchronisation</p>
+        <div class="header-left">
+            <h1>📊 DLC Manager - Back Office</h1>
+            <p class="subtitle">Gestion centralisée des données de synchronisation</p>
+        </div>
+        <button id="btnMonCompte" class="btn-mon-compte" onclick="openMonCompte()" style="display:none;">👤 Mon compte</button>
     </header>
 
     <div class="main-content">
@@ -1081,7 +1130,7 @@
     <div id="loginScreen">
         <div class="login-box">
             <div class="login-logo">🏪 DLC Manager</div>
-            <div class="login-subtitle">Back-office — Connexion administrateur</div>
+            <div class="login-subtitle">Back-office — Connexion</div>
             <div class="login-field">
                 <label>Login</label>
                 <input type="text" id="loginInput" placeholder="Votre login" autocomplete="username">
@@ -1180,11 +1229,83 @@
         </div>
     </div>
 
+    <!-- Modal Mon compte -->
+    <div id="monCompteModal" class="modal" onclick="if(event.target===this)closeMonCompte()">
+        <div class="modal-content" style="max-width:460px;">
+            <div class="modal-header">
+                <span>👤 Mon compte</span>
+                <button class="modal-close" onclick="closeMonCompte()">✕</button>
+            </div>
+
+            <div class="mon-compte-section-title">Identité</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Prénom</label>
+                    <input type="text" class="form-input" id="mcPrenom" placeholder="Jean">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Nom</label>
+                    <input type="text" class="form-input" id="mcNom" placeholder="Dupont">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label class="form-label">Enseigne</label>
+                <input type="text" class="form-input" id="mcEnseigne" placeholder="Carrefour Honfleur">
+            </div>
+
+            <div class="mon-compte-section-title">Contact</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Téléphone</label>
+                    <input type="tel" class="form-input" id="mcTelephone" placeholder="06 00 00 00 00">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="mcEmail" placeholder="jean@exemple.fr">
+                </div>
+            </div>
+
+            <div class="mon-compte-section-title">Connexion</div>
+            <div class="form-group">
+                <label class="form-label">Login (non modifiable)</label>
+                <input type="text" class="form-input" id="mcLogin" readonly>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Nouveau mot de passe <span style="font-weight:400;color:#9ca3af;">(laisser vide = inchangé)</span></label>
+                <input type="password" class="form-input" id="mcPassword" placeholder="••••••••" autocomplete="new-password">
+            </div>
+
+            <div class="mon-compte-section-title">Pricer</div>
+            <div class="pricer-sync-row">
+                <div id="mcPricerLed" class="pricer-led red"></div>
+                <div>
+                    <div class="pricer-sync-label" id="mcPricerStatus">Non synchronisé</div>
+                    <div class="pricer-sync-detail" id="mcPricerDetail">—</div>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:10px;">
+                <label class="form-label">Code Anabel (non modifiable)</label>
+                <input type="text" class="form-input" id="mcCodeAnabel" readonly>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Pricer ID (non modifiable)</label>
+                <input type="text" class="form-input" id="mcPricerId" readonly>
+            </div>
+
+            <div id="monCompteError" style="display:none;color:#dc2626;font-size:13px;margin-top:8px;padding:8px 12px;background:#fef2f2;border-radius:6px;"></div>
+            <div id="monCompteSuccess" style="display:none;color:#16a34a;font-size:13px;margin-top:8px;padding:8px 12px;background:#f0fdf4;border-radius:6px;"></div>
+
+            <div class="modal-actions">
+                <button class="btn-save" onclick="saveMonCompte()">💾 Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         let lastRefresh = null;
         let authToken = null;
-        let currentUser = null; // { id, login, is_admin }
+        let currentUser = null; // { id, login, is_admin, pricer_token, pricer_token_expireat, ... }
 
         function switchTab(tabName) {
             document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
@@ -1202,14 +1323,18 @@
         async function loadAllData() {
             try {
                 const safeJson = (r) => r.json().catch(() => null);
-                const [aisles, products, devices, logs, ruptures, users] = await Promise.all([
+                const baseRequests = [
                     authFetch('/api/aisles').then(safeJson),
                     authFetch('/api/products').then(safeJson),
                     authFetch('/api/devices').then(safeJson),
                     authFetch('/api/logs').then(safeJson),
                     authFetch('/api/views/ruptures').then(safeJson),
-                    authFetch('/api/users').then(safeJson),
-                ]);
+                ];
+                // N'appeler /api/users que si admin
+                const usersFetch = currentUser && currentUser.is_admin
+                    ? authFetch('/api/users').then(safeJson)
+                    : Promise.resolve([]);
+                const [aisles, products, devices, logs, ruptures, users] = await Promise.all([...baseRequests, usersFetch]);
                 ruptureProductIds = new Set(Array.isArray(ruptures) ? ruptures.map(r => r.id) : []);
 
                 allAisles = Array.isArray(aisles) ? aisles : [];
@@ -2081,14 +2206,22 @@
                 });
                 const data = await res.json();
                 if (!res.ok) { errEl.textContent = data.error || 'Identifiants incorrects.'; errEl.style.display = 'block'; return; }
-                if (!data.is_admin) { errEl.textContent = 'Accès réservé aux administrateurs.'; errEl.style.display = 'block'; return; }
                 authToken = data.token;
-                // Récupérer les infos du compte connecté
+                // Récupérer les infos complètes du compte connecté
                 const meRes = await authFetch('/api/users/me');
                 const me = await meRes.json();
-                currentUser = { id: me.id, login: me.login, is_admin: me.is_admin };
+                currentUser = {
+                    id: me.id, login: me.login, is_admin: me.is_admin,
+                    pricer_token: me.pricer_token, pricer_token_expireat: me.pricer_token_expireat,
+                    nom: me.nom, prenom: me.prenom, enseigne: me.enseigne,
+                    telephone: me.telephone, email: me.email,
+                    code_anabel: me.code_anabel, pricer_id: me.pricer_id,
+                };
                 document.getElementById('loginScreen').classList.add('hidden');
-                document.getElementById('tabUtilisateurs').style.display = '';
+                // Onglet Utilisateurs : visible uniquement pour les admins
+                document.getElementById('tabUtilisateurs').style.display = currentUser.is_admin ? '' : 'none';
+                // Bouton Mon compte : visible pour tous
+                document.getElementById('btnMonCompte').style.display = '';
                 await loadAllData();
                 setupRealtime();
             } catch { errEl.textContent = 'Erreur de connexion au serveur.'; errEl.style.display = 'block'; }
@@ -2114,6 +2247,110 @@
                 document.getElementById('count-logs').textContent = countLogs24h(allLogs);
             } catch (e) { console.error('loadLogs error', e); }
         }
+
+        // ── Mon compte ──────────────────────────────────────────────────────────
+        async function openMonCompte() {
+            // Rafraîchir les données depuis le serveur
+            try {
+                const meRes = await authFetch('/api/users/me');
+                if (meRes.ok) {
+                    const me = await meRes.json();
+                    Object.assign(currentUser, me);
+                }
+            } catch (e) { /* on utilise les données en cache */ }
+
+            const u = currentUser;
+            document.getElementById('mcPrenom').value   = u.prenom     || '';
+            document.getElementById('mcNom').value      = u.nom        || '';
+            document.getElementById('mcEnseigne').value = u.enseigne   || '';
+            document.getElementById('mcTelephone').value= u.telephone  || '';
+            document.getElementById('mcEmail').value    = u.email      || '';
+            document.getElementById('mcLogin').value    = u.login      || '';
+            document.getElementById('mcPassword').value = '';
+            document.getElementById('mcCodeAnabel').value = u.code_anabel || '';
+            document.getElementById('mcPricerId').value   = u.pricer_id   || '';
+            document.getElementById('monCompteError').style.display   = 'none';
+            document.getElementById('monCompteSuccess').style.display = 'none';
+
+            // Diode Pricer
+            const nowSec = Math.floor(Date.now() / 1000);
+            const led = document.getElementById('mcPricerLed');
+            const statusEl = document.getElementById('mcPricerStatus');
+            const detailEl = document.getElementById('mcPricerDetail');
+            if (u.pricer_token && u.pricer_token_expireat && u.pricer_token_expireat > nowSec) {
+                led.className = 'pricer-led green';
+                statusEl.textContent = 'Pricer synchronisé ✓';
+                const expDate = new Date(u.pricer_token_expireat * 1000);
+                detailEl.textContent = 'Token valide jusqu\'au ' + expDate.toLocaleString('fr-FR');
+            } else {
+                led.className = 'pricer-led red';
+                statusEl.textContent = 'Non synchronisé';
+                detailEl.textContent = u.pricer_token_expireat
+                    ? 'Token expiré le ' + new Date(u.pricer_token_expireat * 1000).toLocaleString('fr-FR')
+                    : 'Aucun token Pricer';
+            }
+
+            document.getElementById('monCompteModal').classList.add('active');
+        }
+
+        function closeMonCompte() {
+            document.getElementById('monCompteModal').classList.remove('active');
+        }
+
+        async function saveMonCompte() {
+            const errEl     = document.getElementById('monCompteError');
+            const successEl = document.getElementById('monCompteSuccess');
+            errEl.style.display = successEl.style.display = 'none';
+
+            const body = {};
+            const prenom    = document.getElementById('mcPrenom').value.trim();
+            const nom       = document.getElementById('mcNom').value.trim();
+            const enseigne  = document.getElementById('mcEnseigne').value.trim();
+            const telephone = document.getElementById('mcTelephone').value.trim();
+            const email     = document.getElementById('mcEmail').value.trim();
+            const password  = document.getElementById('mcPassword').value;
+
+            if (prenom)    body.prenom    = prenom;
+            if (nom)       body.nom       = nom;
+            if (enseigne)  body.enseigne  = enseigne;
+            if (telephone) body.telephone = telephone;
+            if (email)     body.email     = email;
+            if (password)  body.password  = password;
+
+            // Always send even if empty (to allow clearing fields)
+            body.prenom    = prenom    || null;
+            body.nom       = nom       || null;
+            body.enseigne  = enseigne  || null;
+            body.telephone = telephone || null;
+            body.email     = email     || null;
+
+            try {
+                const res = await authFetch('/api/users/me', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    errEl.textContent = data.error || 'Erreur lors de l\'enregistrement.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                // Mettre à jour currentUser
+                Object.assign(currentUser, {
+                    nom: data.nom, prenom: data.prenom, enseigne: data.enseigne,
+                    telephone: data.telephone, email: data.email,
+                });
+                document.getElementById('mcPassword').value = '';
+                successEl.textContent = 'Modifications enregistrées ✓';
+                successEl.style.display = 'block';
+                setTimeout(() => { successEl.style.display = 'none'; }, 3000);
+            } catch (err) {
+                errEl.textContent = 'Erreur de connexion.';
+                errEl.style.display = 'block';
+            }
+        }
+        // ── Fin Mon compte ───────────────────────────────────────────────────────
 
         function renderLogs() {
             const container = document.getElementById('logsList');
