@@ -168,6 +168,23 @@ try {
   console.warn('Users migration warning:', err.message);
 }
 
+// Migration: add user_id to aisles, products, devices, activity_logs
+try {
+  const aisleCols = db.prepare("PRAGMA table_info(aisles)").all().map((c) => c.name);
+  if (!aisleCols.includes('user_id')) db.exec("ALTER TABLE aisles ADD COLUMN user_id INTEGER REFERENCES users(id)");
+
+  const productCols = db.prepare("PRAGMA table_info(products)").all().map((c) => c.name);
+  if (!productCols.includes('user_id')) db.exec("ALTER TABLE products ADD COLUMN user_id INTEGER REFERENCES users(id)");
+
+  const deviceCols = db.prepare("PRAGMA table_info(devices)").all().map((c) => c.name);
+  if (!deviceCols.includes('user_id')) db.exec("ALTER TABLE devices ADD COLUMN user_id INTEGER REFERENCES users(id)");
+
+  const logCols2 = db.prepare("PRAGMA table_info(activity_logs)").all().map((c) => c.name);
+  if (!logCols2.includes('user_id')) db.exec("ALTER TABLE activity_logs ADD COLUMN user_id INTEGER REFERENCES users(id)");
+} catch (err) {
+  console.warn('user_id migration warning:', err.message);
+}
+
 // Seed default user (bcrypt hash synchronous at startup is acceptable — runs once)
 const existingUser = db.prepare('SELECT id, password, code_anabel FROM users WHERE login = ?').get('Honfleur');
 if (!existingUser) {
@@ -195,6 +212,19 @@ if (!existingUser) {
       is_admin        = 1
     WHERE login = 'Honfleur'
   `).run();
+}
+
+// Backfill user_id = admin user pour toutes les données sans user_id
+try {
+  const adminUser = db.prepare("SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1").get();
+  if (adminUser) {
+    db.prepare("UPDATE aisles SET user_id = ? WHERE user_id IS NULL").run(adminUser.id);
+    db.prepare("UPDATE products SET user_id = ? WHERE user_id IS NULL").run(adminUser.id);
+    db.prepare("UPDATE devices SET user_id = ? WHERE user_id IS NULL").run(adminUser.id);
+    db.prepare("UPDATE activity_logs SET user_id = ? WHERE user_id IS NULL").run(adminUser.id);
+  }
+} catch (err) {
+  console.warn('Backfill user_id warning:', err.message);
 }
 
 console.log('✅ Database connected');
@@ -268,9 +298,10 @@ function activityLogger(req, res, next) {
         body: safeBody && Object.keys(safeBody).length ? safeBody : undefined,
         status: res.statusCode,
       };
+      const logUserId = req.user?.userId ?? null;
       const ins = db.prepare(
-        `INSERT INTO activity_logs (device_id, device_name, actor, action, entity_type, entity_id, message, details)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO activity_logs (device_id, device_name, actor, action, entity_type, entity_id, message, details, user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         deviceId,
         deviceName,
@@ -279,7 +310,8 @@ function activityLogger(req, res, next) {
         null,
         req.params?.id != null ? String(req.params.id) : null,
         message,
-        JSON.stringify(details)
+        JSON.stringify(details),
+        logUserId
       );
       const log = db.prepare('SELECT * FROM activity_logs WHERE id = ?').get(ins.lastInsertRowid);
       broadcast('logs:changed', { action: 'create', log });
@@ -311,11 +343,11 @@ function authenticate(req, res, next) {
   if (deviceId) {
     try {
       if (req.user.userId) {
-        // Token utilisateur : on associe le login de l'user à ce device
-        const u = db.prepare('SELECT login FROM users WHERE id = ?').get(req.user.userId);
+        // Token utilisateur : on associe le login et l'id de l'user à ce device
+        const u = db.prepare('SELECT id, login FROM users WHERE id = ?').get(req.user.userId);
         db.prepare(
-          "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now'), user_login = ? WHERE id = ?"
-        ).run(u?.login ?? null, deviceId);
+          "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now'), user_login = ?, user_id = ? WHERE id = ?"
+        ).run(u?.login ?? null, u?.id ?? null, deviceId);
       } else {
         db.prepare(
           "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now') WHERE id = ?"
@@ -591,6 +623,21 @@ app.put('/api/users/me', authenticate, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Helper : résout le user_id depuis un token user ou device
+// ---------------------------------------------------------------------------
+function getRequestUserId(req) {
+  if (req.user?.userId) return req.user.userId;
+  if (req.user?.deviceId) {
+    const dev = db.prepare('SELECT user_login FROM devices WHERE id = ?').get(req.user.deviceId);
+    if (dev?.user_login) {
+      const u = db.prepare('SELECT id FROM users WHERE login = ?').get(dev.user_login);
+      return u?.id ?? null;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers for product DLC computation
 // ---------------------------------------------------------------------------
 function getLatestCheck(productId) {
@@ -611,44 +658,49 @@ function getPreviousCheckBefore(productId, dateStr) {
   ).get(productId, dateStr);
 }
 
-function getAllProductsOrdered() {
+function getAllProductsOrdered(userId) {
   return db.prepare(
     `SELECT p.* FROM products p
      LEFT JOIN aisles a ON p.aisle_id = a.id
+     WHERE p.user_id = ?
      ORDER BY COALESCE(a.order_index, 999), p.name`
-  ).all();
+  ).all(userId);
 }
 
 // ---------------------------------------------------------------------------
 // AISLES
 // ---------------------------------------------------------------------------
-app.get('/api/aisles', authenticate, (_req, res) => {
+app.get('/api/aisles', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const aisles = db.prepare(`
     SELECT a.*, COUNT(p.id) as productCount
     FROM aisles a
     LEFT JOIN products p ON a.id = p.aisle_id
+    WHERE a.user_id = ?
     GROUP BY a.id
     ORDER BY a.order_index ASC
-  `).all();
+  `).all(uid);
   res.json(aisles);
 });
 
 app.post('/api/aisles', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { name } = req.body;
   if (name == null) return res.status(400).json({ error: 'name is required' });
-  const result = db.prepare('SELECT MAX(order_index) as max_order FROM aisles').get();
+  const result = db.prepare('SELECT MAX(order_index) as max_order FROM aisles WHERE user_id = ?').get(uid);
   const nextOrder = (result?.max_order ?? 0) + 1;
-  const insert = db.prepare('INSERT INTO aisles (name, order_index) VALUES (?, ?)').run(name, nextOrder);
+  const insert = db.prepare('INSERT INTO aisles (name, order_index, user_id) VALUES (?, ?, ?)').run(name, nextOrder, uid);
   const aisle = db.prepare('SELECT * FROM aisles WHERE id = ?').get(insert.lastInsertRowid);
   broadcast('aisles:changed', { action: 'create', aisle });
   res.status(201).json(aisle);
 });
 
 app.put('/api/aisles/:id', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
   const { name } = req.body;
   if (name == null) return res.status(400).json({ error: 'name is required' });
-  const existing = db.prepare('SELECT * FROM aisles WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT * FROM aisles WHERE id = ? AND user_id = ?').get(id, uid);
   if (!existing) return res.status(404).json({ error: 'Aisle not found' });
   db.prepare('UPDATE aisles SET name = ? WHERE id = ?').run(name, id);
   const aisle = db.prepare('SELECT * FROM aisles WHERE id = ?').get(id);
@@ -657,18 +709,19 @@ app.put('/api/aisles/:id', authenticate, (req, res) => {
 });
 
 app.delete('/api/aisles/:id', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
-  const existing = db.prepare('SELECT * FROM aisles WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT * FROM aisles WHERE id = ? AND user_id = ?').get(id, uid);
   if (!existing) return res.status(404).json({ error: 'Aisle not found' });
 
-  // Transfer products to "unnamed" aisle if needed
+  // Transfer products to "unnamed" aisle (per user) if needed
   const count = db.prepare('SELECT COUNT(*) as count FROM products WHERE aisle_id = ?').get(id);
   if (count.count > 0) {
-    let unnamed = db.prepare("SELECT id FROM aisles WHERE name = '' ORDER BY id ASC LIMIT 1").get();
+    let unnamed = db.prepare("SELECT id FROM aisles WHERE name = '' AND user_id = ? ORDER BY id ASC LIMIT 1").get(uid);
     if (!unnamed) {
-      const r = db.prepare('SELECT MAX(order_index) as max_order FROM aisles').get();
+      const r = db.prepare('SELECT MAX(order_index) as max_order FROM aisles WHERE user_id = ?').get(uid);
       const nextOrder = (r?.max_order ?? -1) + 1;
-      const ins = db.prepare("INSERT INTO aisles (name, order_index) VALUES ('', ?)").run(nextOrder);
+      const ins = db.prepare("INSERT INTO aisles (name, order_index, user_id) VALUES ('', ?, ?)").run(nextOrder, uid);
       unnamed = { id: ins.lastInsertRowid };
       broadcast('aisles:changed', {
         action: 'create',
@@ -685,11 +738,12 @@ app.delete('/api/aisles/:id', authenticate, (req, res) => {
 });
 
 app.post('/api/aisles/reorder', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { ids } = req.body;
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array is required' });
-  const stmt = db.prepare('UPDATE aisles SET order_index = ? WHERE id = ?');
+  const stmt = db.prepare('UPDATE aisles SET order_index = ? WHERE id = ? AND user_id = ?');
   const tx = db.transaction((aisleIds) => {
-    aisleIds.forEach((id, i) => stmt.run(i, id));
+    aisleIds.forEach((id, i) => stmt.run(i, id, uid));
   });
   tx(ids);
   broadcast('aisles:changed', { action: 'reorder', ids });
@@ -700,51 +754,55 @@ app.post('/api/aisles/reorder', authenticate, (req, res) => {
 // ACTIVITY LOGS
 // ---------------------------------------------------------------------------
 app.get('/api/logs', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const limit = Math.min(parseInt(req.query.limit, 10) || 200, 1000);
   const logs = db.prepare(
-    'SELECT * FROM activity_logs ORDER BY created_at DESC, id DESC LIMIT ?'
-  ).all(limit);
+    'SELECT * FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?'
+  ).all(uid, limit);
   res.json(logs);
 });
 
 // ---------------------------------------------------------------------------
 // DEVICES
 // ---------------------------------------------------------------------------
-app.get('/api/devices', authenticate, (_req, res) => {
+app.get('/api/devices', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const devices = db.prepare(
-    'SELECT id, name, user_login, created_at, last_seen, last_connection, last_interaction FROM devices ORDER BY last_seen DESC'
-  ).all();
+    'SELECT id, name, user_login, created_at, last_seen, last_connection, last_interaction FROM devices WHERE user_id = ? ORDER BY last_seen DESC'
+  ).all(uid);
   res.json(devices);
 });
 
 app.post('/api/devices', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id, name } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name are required' });
 
   const existing = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
   if (existing) {
     db.prepare(
-      "UPDATE devices SET last_seen = datetime('now'), last_connection = datetime('now'), last_interaction = datetime('now') WHERE id = ?"
-    ).run(id);
+      "UPDATE devices SET last_seen = datetime('now'), last_connection = datetime('now'), last_interaction = datetime('now'), user_id = COALESCE(user_id, ?) WHERE id = ?"
+    ).run(uid, id);
     const device = db.prepare('SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices WHERE id = ?').get(id);
     broadcast('devices:changed', { action: 'connect', device });
     return res.json(device);
   }
 
   db.prepare(
-    "INSERT INTO devices (id, name, last_connection, last_interaction) VALUES (?, ?, datetime('now'), datetime('now'))"
-  ).run(id, name);
+    "INSERT INTO devices (id, name, last_connection, last_interaction, user_id) VALUES (?, ?, datetime('now'), datetime('now'), ?)"
+  ).run(id, name, uid);
   const device = db.prepare('SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices WHERE id = ?').get(id);
   broadcast('devices:changed', { action: 'register', device });
   res.status(201).json(device);
 });
 
 app.put('/api/devices/:id', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
 
-  const existing = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT * FROM devices WHERE id = ? AND user_id = ?').get(id, uid);
   if (!existing) return res.status(404).json({ error: 'Device not found' });
 
   db.prepare('UPDATE devices SET name = ? WHERE id = ?').run(name, id);
@@ -757,34 +815,38 @@ app.put('/api/devices/:id', authenticate, (req, res) => {
 // PRODUCTS
 // ---------------------------------------------------------------------------
 app.get('/api/products', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { barcode } = req.query;
   if (barcode) {
-    const product = db.prepare('SELECT * FROM products WHERE barcode = ?').get(barcode);
+    const product = db.prepare('SELECT * FROM products WHERE barcode = ? AND user_id = ?').get(barcode, uid);
     return res.json(product || null);
   }
-  const products = db.prepare('SELECT * FROM products ORDER BY category, name').all();
+  const products = db.prepare('SELECT * FROM products WHERE user_id = ? ORDER BY category, name').all(uid);
   res.json(products);
 });
 
 app.get('/api/products/:id', authenticate, (req, res) => {
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+  const uid = getRequestUserId(req);
+  const product = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(req.params.id, uid);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   res.json(product);
 });
 
 app.post('/api/products', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { name, category, barcode, image_uri, initial_expiry_date, aisle_id } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   const result = db.prepare(
-    `INSERT INTO products (name, category, barcode, image_uri, initial_expiry_date, aisle_id)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO products (name, category, barcode, image_uri, initial_expiry_date, aisle_id, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     name,
     category || 'Autre',
     barcode ?? null,
     image_uri ?? null,
     initial_expiry_date ?? null,
-    aisle_id ?? null
+    aisle_id ?? null,
+    uid
   );
   const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
   broadcast('products:changed', { action: 'create', product });
@@ -792,9 +854,10 @@ app.post('/api/products', authenticate, (req, res) => {
 });
 
 app.put('/api/products/:id', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
   const { name, category, barcode, image_uri, initial_expiry_date, aisle_id } = req.body;
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(id, uid);
   if (!existing) return res.status(404).json({ error: 'Product not found' });
 
   db.prepare(
@@ -824,8 +887,9 @@ app.put('/api/products/:id', authenticate, (req, res) => {
 });
 
 app.delete('/api/products/:id', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(id, uid);
   if (!existing) return res.status(404).json({ error: 'Product not found' });
   db.prepare('DELETE FROM products WHERE id = ?').run(id);
 
@@ -841,9 +905,10 @@ app.delete('/api/products/:id', authenticate, (req, res) => {
 // PHOTOS
 // ---------------------------------------------------------------------------
 app.post('/api/products/:id/photo', authenticate, upload.single('photo'), (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
   if (!req.file) return res.status(400).json({ error: 'No photo file provided' });
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  const product = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(id, uid);
   if (!product) {
     fs.unlinkSync(req.file.path);
     return res.status(404).json({ error: 'Product not found' });
@@ -873,6 +938,7 @@ app.get('/api/checks/product/:productId', authenticate, (req, res) => {
 });
 
 app.post('/api/checks', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { product_id, check_date, status, next_expiry_date } = req.body;
   if (!product_id || !check_date || !status) {
     return res.status(400).json({ error: 'product_id, check_date, status are required' });
@@ -880,7 +946,7 @@ app.post('/api/checks', authenticate, (req, res) => {
   if (!['ok', 'rupture'].includes(status)) {
     return res.status(400).json({ error: 'status must be "ok" or "rupture"' });
   }
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(product_id);
+  const product = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(product_id, uid);
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
   // For ruptures: capture previous DLC
@@ -904,10 +970,11 @@ app.post('/api/checks', authenticate, (req, res) => {
 
 // Update product DLC by creating a new check for today
 app.post('/api/products/:id/dlc', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { id } = req.params;
   const { dlc, today } = req.body;
   if (!dlc || !today) return res.status(400).json({ error: 'dlc and today are required' });
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+  const product = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(id, uid);
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
   db.prepare('DELETE FROM checks WHERE product_id = ? AND check_date = ?').run(id, today);
@@ -943,9 +1010,10 @@ function buildProductWithStatus(product, dateStr) {
 }
 
 app.get('/api/views/products-for-date', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { date } = req.query;
   if (!date) return res.status(400).json({ error: 'date is required' });
-  const products = getAllProductsOrdered();
+  const products = getAllProductsOrdered(uid);
   const out = [];
   for (const p of products) {
     const item = buildProductWithStatus(p, date);
@@ -955,9 +1023,10 @@ app.get('/api/views/products-for-date', authenticate, (req, res) => {
 });
 
 app.get('/api/views/overdue', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { today } = req.query;
   if (!today) return res.status(400).json({ error: 'today is required' });
-  const products = getAllProductsOrdered();
+  const products = getAllProductsOrdered(uid);
   const out = [];
   for (const p of products) {
     const last = getLatestCheck(p.id);
@@ -976,9 +1045,10 @@ app.get('/api/views/overdue', authenticate, (req, res) => {
 });
 
 app.get('/api/views/today-expiry', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { today } = req.query;
   if (!today) return res.status(400).json({ error: 'today is required' });
-  const products = getAllProductsOrdered();
+  const products = getAllProductsOrdered(uid);
   const out = [];
   for (const p of products) {
     const last = getLatestCheck(p.id);
@@ -996,16 +1066,17 @@ app.get('/api/views/today-expiry', authenticate, (req, res) => {
   res.json(out);
 });
 
-app.get('/api/views/ruptures', authenticate, (_req, res) => {
+app.get('/api/views/ruptures', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const rows = db.prepare(
     `SELECT p.*, c.check_date as last_check_date FROM products p
      INNER JOIN checks c ON p.id = c.product_id
      INNER JOIN (
        SELECT product_id, MAX(check_date) as max_date FROM checks GROUP BY product_id
      ) latest ON c.product_id = latest.product_id AND c.check_date = latest.max_date
-     WHERE c.status = 'rupture'
+     WHERE c.status = 'rupture' AND p.user_id = ?
      ORDER BY p.name`
-  ).all();
+  ).all(uid);
   res.json(
     rows.map((r) => ({
       ...r,
@@ -1018,13 +1089,17 @@ app.get('/api/views/ruptures', authenticate, (_req, res) => {
 });
 
 app.get('/api/views/checked-today', authenticate, (req, res) => {
+  const uid = getRequestUserId(req);
   const { today } = req.query;
   if (!today) return res.status(400).json({ error: 'today is required' });
 
   const checks = db.prepare(
-    `SELECT product_id, status, next_expiry_date, previous_expiry_date
-     FROM checks WHERE check_date = ? ORDER BY created_at DESC`
-  ).all(today);
+    `SELECT c.product_id, c.status, c.next_expiry_date, c.previous_expiry_date
+     FROM checks c
+     INNER JOIN products p ON c.product_id = p.id
+     WHERE c.check_date = ? AND p.user_id = ?
+     ORDER BY c.created_at DESC`
+  ).all(today, uid);
 
   const seen = new Set();
   const unique = [];
@@ -1038,7 +1113,7 @@ app.get('/api/views/checked-today', authenticate, (req, res) => {
   const out = [];
   for (const check of unique) {
     if (check.next_expiry_date && check.next_expiry_date <= today) continue;
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(check.product_id);
+    const product = db.prepare('SELECT * FROM products WHERE id = ? AND user_id = ?').get(check.product_id, uid);
     if (!product) continue;
 
     let previousDLC = check.previous_expiry_date;
