@@ -1424,10 +1424,13 @@
                 const createdAt = fmt(device.created_at);
                 const lastConnection = fmt(device.last_connection);
                 const lastInteraction = fmt(device.last_interaction || device.last_seen);
+                const loginPrefix = device.user_login
+                    ? `<span style="opacity:0.55;font-weight:500">${escapeHtml(device.user_login)}</span><span style="opacity:0.4;margin:0 6px">→</span>`
+                    : '';
                 html += `
                     <div class="device-item">
                         <div class="device-info">
-                            <div class="device-name" onclick="renameDevice('${device.id}', '${device.name.replace(/'/g, "\\'")}')">${device.name}</div>
+                            <div class="device-name" onclick="renameDevice('${device.id}', '${device.name.replace(/'/g, "\\'")}')">${loginPrefix}${escapeHtml(device.name)}</div>
                             <div class="device-meta">ID: ${device.id}</div>
                             <div class="device-meta">📅 Créé le : ${createdAt}</div>
                             <div class="device-meta">🔌 Dernière connexion : ${lastConnection}</div>

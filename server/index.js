@@ -100,7 +100,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_logs_created ON activity_logs(created_at DESC);
 `);
 
-// Migration: add last_connection / last_interaction columns to devices if missing
+// Migration: add last_connection / last_interaction / user_login columns to devices if missing
 try {
   const cols = db.prepare("PRAGMA table_info(devices)").all().map((c) => c.name);
   if (!cols.includes('last_connection')) {
@@ -108,6 +108,9 @@ try {
   }
   if (!cols.includes('last_interaction')) {
     db.exec("ALTER TABLE devices ADD COLUMN last_interaction TEXT");
+  }
+  if (!cols.includes('user_login')) {
+    db.exec("ALTER TABLE devices ADD COLUMN user_login TEXT");
   }
 } catch (err) {
   console.warn('Devices migration warning:', err.message);
@@ -288,9 +291,17 @@ function authenticate(req, res, next) {
   const deviceId = req.headers['x-device-id'];
   if (deviceId) {
     try {
-      db.prepare(
-        "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now') WHERE id = ?"
-      ).run(deviceId);
+      if (req.user.userId) {
+        // Token utilisateur : on associe le login de l'user à ce device
+        const u = db.prepare('SELECT login FROM users WHERE id = ?').get(req.user.userId);
+        db.prepare(
+          "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now'), user_login = ? WHERE id = ?"
+        ).run(u?.login ?? null, deviceId);
+      } else {
+        db.prepare(
+          "UPDATE devices SET last_interaction = datetime('now'), last_seen = datetime('now') WHERE id = ?"
+        ).run(deviceId);
+      }
     } catch (err) { /* ignore tracking errors */ }
   }
   next();
@@ -554,7 +565,7 @@ app.get('/api/logs', authenticate, (req, res) => {
 // ---------------------------------------------------------------------------
 app.get('/api/devices', authenticate, (_req, res) => {
   const devices = db.prepare(
-    'SELECT id, name, created_at, last_seen, last_connection, last_interaction FROM devices ORDER BY last_seen DESC'
+    'SELECT id, name, user_login, created_at, last_seen, last_connection, last_interaction FROM devices ORDER BY last_seen DESC'
   ).all();
   res.json(devices);
 });
