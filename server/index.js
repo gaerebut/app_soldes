@@ -122,6 +122,7 @@ try {
   const newUserCols = {
     enseigne: 'TEXT', nom: 'TEXT', prenom: 'TEXT', telephone: 'TEXT', email: 'TEXT',
     is_active: 'INTEGER NOT NULL DEFAULT 1',
+    deleted_at: 'TEXT',
   };
   for (const [col, type] of Object.entries(newUserCols)) {
     if (!userCols.includes(col)) {
@@ -379,7 +380,7 @@ app.post('/api/auth/login', async (req, res) => {
   const { login, password } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'Login and password are required' });
   const user = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  if (!user || user.deleted_at) return res.status(401).json({ error: 'Invalid credentials' });
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).json({ error: 'Invalid credentials' });
   if (user.is_active === 0) return res.status(403).json({ error: 'Compte désactivé. Veuillez contacter votre administrateur.' });
@@ -416,10 +417,13 @@ app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 // ---------------------------------------------------------------------------
 // USER MANAGEMENT (admin CRUD)
 // ---------------------------------------------------------------------------
-const USER_PUBLIC_FIELDS = 'id, login, is_active, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
+const USER_PUBLIC_FIELDS = 'id, login, is_active, deleted_at, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
 
-app.get('/api/users', authenticate, (_req, res) => {
-  const users = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users ORDER BY id ASC`).all();
+app.get('/api/users', authenticate, (req, res) => {
+  const includeDeleted = req.query.include_deleted === '1';
+  const users = includeDeleted
+    ? db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users ORDER BY deleted_at ASC, id ASC`).all()
+    : db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE deleted_at IS NULL ORDER BY id ASC`).all();
   res.json(users);
 });
 
@@ -477,6 +481,27 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.delete('/api/users/:id', authenticate, (req, res) => {
+  const { id } = req.params;
+  if (req.user.userId && String(req.user.userId) === String(id))
+    return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
+  const user = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(id);
+  if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  if (user.deleted_at) return res.status(400).json({ error: 'Utilisateur déjà supprimé' });
+  db.prepare("UPDATE users SET deleted_at = datetime('now') WHERE id = ?").run(id);
+  res.json({ ok: true });
+});
+
+app.put('/api/users/:id/restore', authenticate, (req, res) => {
+  const { id } = req.params;
+  const user = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(id);
+  if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  if (!user.deleted_at) return res.status(400).json({ error: 'Utilisateur non supprimé' });
+  db.prepare('UPDATE users SET deleted_at = NULL WHERE id = ?').run(id);
+  const restored = db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users WHERE id = ?`).get(id);
+  res.json(restored);
 });
 
 app.put('/api/users/:id/toggle-active', authenticate, (req, res) => {
