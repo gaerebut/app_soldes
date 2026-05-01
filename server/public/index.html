@@ -1102,32 +1102,34 @@
 
         async function loadAllData() {
             try {
+                const safeJson = (r) => r.json().catch(() => null);
                 const [aisles, products, devices, logs, ruptures, users] = await Promise.all([
-                    authFetch('/api/aisles').then(r => r.json()),
-                    authFetch('/api/products').then(r => r.json()),
-                    authFetch('/api/devices').then(r => r.json()),
-                    authFetch('/api/logs').then(r => r.json()),
-                    authFetch('/api/views/ruptures').then(r => r.json()),
-                    authFetch('/api/users').then(r => r.json()),
+                    authFetch('/api/aisles').then(safeJson),
+                    authFetch('/api/products').then(safeJson),
+                    authFetch('/api/devices').then(safeJson),
+                    authFetch('/api/logs').then(safeJson),
+                    authFetch('/api/views/ruptures').then(safeJson),
+                    authFetch('/api/users').then(safeJson),
                 ]);
-                ruptureProductIds = new Set((ruptures || []).map(r => r.id));
+                ruptureProductIds = new Set(Array.isArray(ruptures) ? ruptures.map(r => r.id) : []);
 
-                allAisles = aisles || [];
-                productList = products || [];
+                allAisles = Array.isArray(aisles) ? aisles : [];
+                productList = Array.isArray(products) ? products : [];
                 allLogs = Array.isArray(logs) ? logs : [];
+                const userList = Array.isArray(users) ? users : [];
 
-                displayAisles(aisles);
-                displayProducts(products);
-                displayDevices(devices);
-                displayUsers(users);
+                displayAisles(allAisles);
+                displayProducts(productList);
+                displayDevices(Array.isArray(devices) ? devices : []);
+                displayUsers(userList);
                 renderLogs();
-                updateTabCounts(aisles, products, devices, allLogs, users);
-                updateAisleSelect(aisles);
+                updateTabCounts(allAisles, productList, Array.isArray(devices) ? devices : [], allLogs, userList);
+                updateAisleSelect(allAisles);
 
                 lastRefresh = new Date();
                 updateRefreshTime();
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Erreur loadAllData:', error);
             }
         }
 
@@ -1623,7 +1625,7 @@
 
         function displayUsers(users) {
             const container = document.getElementById('users-list');
-            const list = users || [];
+            const list = Array.isArray(users) ? users : [];
             if (list.length === 0) {
                 container.innerHTML = '<div class="empty">Aucun utilisateur</div>';
                 return;
