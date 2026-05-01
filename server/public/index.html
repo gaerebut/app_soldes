@@ -1267,7 +1267,7 @@
 
             <div class="mon-compte-section-title">Connexion</div>
             <div class="form-group">
-                <label class="form-label">Login (non modifiable)</label>
+                <label class="form-label">Identifiant de connexion (non modifiable)</label>
                 <input type="text" class="form-input" id="mcLogin" readonly>
             </div>
             <div class="form-group">
@@ -1280,16 +1280,7 @@
                 <div id="mcPricerLed" class="pricer-led red"></div>
                 <div>
                     <div class="pricer-sync-label" id="mcPricerStatus">Non synchronisé</div>
-                    <div class="pricer-sync-detail" id="mcPricerDetail">—</div>
                 </div>
-            </div>
-            <div class="form-group" style="margin-top:10px;">
-                <label class="form-label">Code Anabel (non modifiable)</label>
-                <input type="text" class="form-input" id="mcCodeAnabel" readonly>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Pricer ID (non modifiable)</label>
-                <input type="text" class="form-input" id="mcPricerId" readonly>
             </div>
 
             <div id="monCompteError" style="display:none;color:#dc2626;font-size:13px;margin-top:8px;padding:8px 12px;background:#fef2f2;border-radius:6px;"></div>
@@ -2267,8 +2258,6 @@
             document.getElementById('mcEmail').value    = u.email      || '';
             document.getElementById('mcLogin').value    = u.login      || '';
             document.getElementById('mcPassword').value = '';
-            document.getElementById('mcCodeAnabel').value = u.code_anabel || '';
-            document.getElementById('mcPricerId').value   = u.pricer_id   || '';
             document.getElementById('monCompteError').style.display   = 'none';
             document.getElementById('monCompteSuccess').style.display = 'none';
 
@@ -2276,18 +2265,12 @@
             const nowSec = Math.floor(Date.now() / 1000);
             const led = document.getElementById('mcPricerLed');
             const statusEl = document.getElementById('mcPricerStatus');
-            const detailEl = document.getElementById('mcPricerDetail');
             if (u.pricer_token && u.pricer_token_expireat && u.pricer_token_expireat > nowSec) {
                 led.className = 'pricer-led green';
                 statusEl.textContent = 'Pricer synchronisé ✓';
-                const expDate = new Date(u.pricer_token_expireat * 1000);
-                detailEl.textContent = 'Token valide jusqu\'au ' + expDate.toLocaleString('fr-FR');
             } else {
                 led.className = 'pricer-led red';
                 statusEl.textContent = 'Non synchronisé';
-                detailEl.textContent = u.pricer_token_expireat
-                    ? 'Token expiré le ' + new Date(u.pricer_token_expireat * 1000).toLocaleString('fr-FR')
-                    : 'Aucun token Pricer';
             }
 
             document.getElementById('monCompteModal').classList.add('active');
