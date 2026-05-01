@@ -123,6 +123,7 @@ try {
     enseigne: 'TEXT', nom: 'TEXT', prenom: 'TEXT', telephone: 'TEXT', email: 'TEXT',
     is_active: 'INTEGER NOT NULL DEFAULT 1',
     deleted_at: 'TEXT',
+    is_admin: 'INTEGER NOT NULL DEFAULT 0',
   };
   for (const [col, type] of Object.entries(newUserCols)) {
     if (!userCols.includes(col)) {
@@ -190,7 +191,8 @@ if (!existingUser) {
     UPDATE users SET
       code_anabel     = COALESCE(code_anabel,     '8314'),
       pricer_id       = COALESCE(pricer_id,       'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c'),
-      pricer_password = COALESCE(pricer_password, '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ')
+      pricer_password = COALESCE(pricer_password, '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ'),
+      is_admin        = 1
     WHERE login = 'Honfleur'
   `).run();
 }
@@ -392,7 +394,7 @@ app.post('/api/auth/login', async (req, res) => {
   });
 
   const token = jwt.sign({ userId: user.id, login: user.login }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, pricer_token: pricerToken, code_anabel: user.code_anabel ?? null });
+  res.json({ token, pricer_token: pricerToken, code_anabel: user.code_anabel ?? null, is_admin: user.is_admin === 1 });
 });
 
 app.post('/api/auth/device', (req, res) => {
@@ -417,9 +419,15 @@ app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 // ---------------------------------------------------------------------------
 // USER MANAGEMENT (admin CRUD)
 // ---------------------------------------------------------------------------
-const USER_PUBLIC_FIELDS = 'id, login, is_active, deleted_at, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
+const USER_PUBLIC_FIELDS = 'id, login, is_admin, is_active, deleted_at, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, pricer_token, pricer_token_expireat';
 
-app.get('/api/users', authenticate, (req, res) => {
+function requireAdmin(req, res, next) {
+  const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user?.userId);
+  if (!user || user.is_admin !== 1) return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+  next();
+}
+
+app.get('/api/users', authenticate, requireAdmin, (req, res) => {
   const includeDeleted = req.query.include_deleted === '1';
   const users = includeDeleted
     ? db.prepare(`SELECT ${USER_PUBLIC_FIELDS} FROM users ORDER BY deleted_at ASC, id ASC`).all()
@@ -427,7 +435,7 @@ app.get('/api/users', authenticate, (req, res) => {
   res.json(users);
 });
 
-app.post('/api/users', authenticate, async (req, res) => {
+app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
   const { login, password, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password } = req.body;
   if (!login || !password) return res.status(400).json({ error: 'login et password requis' });
   const existing = db.prepare('SELECT id FROM users WHERE login = ?').get(login);
@@ -445,9 +453,9 @@ app.post('/api/users', authenticate, async (req, res) => {
   }
 });
 
-app.put('/api/users/:id', authenticate, async (req, res) => {
+app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { login, password, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password } = req.body;
+  const { login, password, enseigne, nom, prenom, telephone, email, code_anabel, pricer_id, pricer_password, is_admin } = req.body;
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
   if (login) {
@@ -457,6 +465,9 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
   try {
     let hashedPassword = null;
     if (password) hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    // Un admin ne peut pas se retirer ses propres droits admin
+    const isSelf = req.user.userId && String(req.user.userId) === String(id);
+    const adminValue = isSelf ? undefined : (is_admin != null ? (is_admin ? 1 : 0) : undefined);
     db.prepare(`
       UPDATE users SET
         login           = COALESCE(?, login),
@@ -469,6 +480,7 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
         code_anabel     = ?,
         pricer_id       = ?,
         pricer_password = ?
+        ${adminValue != null ? ', is_admin = ' + adminValue : ''}
       WHERE id = ?
     `).run(
       login || null, hashedPassword,
@@ -483,7 +495,7 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', authenticate, (req, res) => {
+app.delete('/api/users/:id', authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   if (req.user.userId && String(req.user.userId) === String(id))
     return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
@@ -494,7 +506,7 @@ app.delete('/api/users/:id', authenticate, (req, res) => {
   res.json({ ok: true });
 });
 
-app.put('/api/users/:id/restore', authenticate, (req, res) => {
+app.put('/api/users/:id/restore', authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   const user = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(id);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
@@ -504,7 +516,7 @@ app.put('/api/users/:id/restore', authenticate, (req, res) => {
   res.json(restored);
 });
 
-app.put('/api/users/:id/toggle-active', authenticate, (req, res) => {
+app.put('/api/users/:id/toggle-active', authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   if (req.user.userId && String(req.user.userId) === String(id))
     return res.status(400).json({ error: 'Vous ne pouvez pas désactiver votre propre compte' });

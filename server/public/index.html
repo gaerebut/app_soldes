@@ -864,6 +864,47 @@
         .product-dlc-row.dlc-today   { color: #d97706; }
         .product-dlc-row.dlc-ok      { color: #16a34a; }
         .product-dlc-row.dlc-rupture { color: #dc2626; }
+        /* Login screen */
+        #loginScreen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: linear-gradient(135deg, #0D9488 0%, #0a6b62 100%);
+            display: flex; align-items: center; justify-content: center;
+        }
+        #loginScreen.hidden { display: none; }
+        .login-box {
+            background: white; border-radius: 16px; padding: 40px 36px;
+            width: 100%; max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .login-logo {
+            font-size: 28px; font-weight: 800; color: #0D9488;
+            margin-bottom: 4px; text-align: center;
+        }
+        .login-subtitle { font-size: 13px; color: #6b7280; text-align: center; margin-bottom: 28px; }
+        .login-field { margin-bottom: 16px; }
+        .login-field label { display: block; font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .login-field input {
+            width: 100%; padding: 11px 14px; border: 1.5px solid #e5e7eb;
+            border-radius: 8px; font-size: 15px; outline: none; transition: border-color 0.2s;
+        }
+        .login-field input:focus { border-color: #0D9488; }
+        .login-btn {
+            width: 100%; padding: 13px; background: #0D9488; color: white;
+            border: none; border-radius: 10px; font-size: 16px; font-weight: 700;
+            cursor: pointer; margin-top: 8px; transition: background 0.2s;
+        }
+        .login-btn:hover { background: #0a7a72; }
+        .login-error { color: #dc2626; font-size: 13px; margin-top: 12px; text-align: center; display: none; }
+
+        .btn-user-filter.active { background: #0D9488 !important; color: white !important; border-color: #0D9488 !important; }
+
+        /* Admin badge */
+        .badge-admin {
+            display: inline-block; font-size: 10px; font-weight: 800;
+            color: #d97706; background: #fef3c7; border: 1px solid #fcd34d;
+            border-radius: 4px; padding: 2px 6px; margin-left: 6px;
+            vertical-align: middle; text-transform: uppercase; letter-spacing: 0.3px;
+        }
     </style>
 </head>
 <body>
@@ -879,7 +920,7 @@
                 <button class="tab-button active" onclick="switchTab('rayons')">🏪 Rayons <span class="tab-count" id="count-rayons">0</span></button>
                 <button class="tab-button" onclick="switchTab('produits')">📦 Produits <span class="tab-count" id="count-produits">0</span></button>
                 <button class="tab-button" onclick="switchTab('appareils')">📱 Appareils <span class="tab-count" id="count-appareils">0</span></button>
-                <button class="tab-button" onclick="switchTab('utilisateurs')">👤 Utilisateurs <span class="tab-count" id="count-utilisateurs">0</span></button>
+                <button id="tabUtilisateurs" class="tab-button" onclick="switchTab('utilisateurs')" style="display:none;">👤 Utilisateurs <span class="tab-count" id="count-utilisateurs">0</span></button>
                 <button class="tab-button" onclick="switchTab('logs')">📋 Logs <span class="tab-count" id="count-logs">0</span></button>
             </div>
 
@@ -939,11 +980,16 @@
                 <!-- TAB: Utilisateurs -->
                 <div id="utilisateurs" class="tab-pane">
                     <div class="section-title">👤 Gestion des utilisateurs</div>
-                    <div style="padding:0 0 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                    <div style="padding:0 0 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                         <button onclick="openUserModal()" style="background:#0D9488;color:white;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;">+ Nouvel utilisateur</button>
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#6b7280;user-select:none;">
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn-user-filter active" onclick="setUserAdminFilter(null)" style="padding:6px 12px;border:1.5px solid #e5e7eb;border-radius:6px;background:white;font-size:12px;font-weight:600;cursor:pointer;">Tous</button>
+                            <button class="btn-user-filter" onclick="setUserAdminFilter(true)" style="padding:6px 12px;border:1.5px solid #e5e7eb;border-radius:6px;background:white;font-size:12px;font-weight:600;cursor:pointer;">⭐ Admins</button>
+                            <button class="btn-user-filter" onclick="setUserAdminFilter(false)" style="padding:6px 12px;border:1.5px solid #e5e7eb;border-radius:6px;background:white;font-size:12px;font-weight:600;cursor:pointer;">Utilisateurs</button>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#6b7280;user-select:none;margin-left:auto;">
                             <input type="checkbox" id="showDeletedUsers" onchange="reloadUsers()" style="width:15px;height:15px;cursor:pointer;">
-                            Afficher les comptes supprimés
+                            Afficher les supprimés
                         </label>
                     </div>
                     <div id="users-list" style="flex:1;overflow-y:auto;"></div>
@@ -1031,6 +1077,24 @@
         </div>
     </div>
 
+    <!-- Écran de connexion -->
+    <div id="loginScreen">
+        <div class="login-box">
+            <div class="login-logo">🏪 DLC Manager</div>
+            <div class="login-subtitle">Back-office — Connexion administrateur</div>
+            <div class="login-field">
+                <label>Login</label>
+                <input type="text" id="loginInput" placeholder="Votre login" autocomplete="username">
+            </div>
+            <div class="login-field">
+                <label>Mot de passe</label>
+                <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <button class="login-btn" onclick="submitLogin()">Se connecter</button>
+            <div class="login-error" id="loginError"></div>
+        </div>
+    </div>
+
     <!-- Modal Utilisateur -->
     <div id="userModal" class="modal" onclick="if(event.target===this)closeUserModal()">
         <div class="modal-content">
@@ -1068,6 +1132,13 @@
                     <input type="email" class="form-input" id="uEmail" placeholder="jean@exemple.fr">
                 </div>
             </div>
+
+            <div class="user-section-divider">Rôle</div>
+            <label id="uAdminRow" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 0;user-select:none;">
+                <input type="checkbox" id="uIsAdmin" style="width:17px;height:17px;cursor:pointer;accent-color:#d97706;">
+                <span style="font-size:14px;font-weight:600;">⭐ Compte administrateur</span>
+                <span style="font-size:12px;color:#6b7280;">(accès au back-office)</span>
+            </label>
 
             <div class="user-section-divider">Connexion app mobile</div>
             <div class="form-group">
@@ -1113,6 +1184,7 @@
     <script>
         let lastRefresh = null;
         let authToken = null;
+        let currentUser = null; // { id, login, is_admin }
 
         function switchTab(tabName) {
             document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
@@ -1650,9 +1722,32 @@
 
         // ── USERS ──────────────────────────────────────────────────────────────
 
+        let userAdminFilter = null; // null = tous, true = admins, false = non-admins
+
+        function setUserAdminFilter(val) {
+            userAdminFilter = val;
+            document.querySelectorAll('.btn-user-filter').forEach(b => b.classList.remove('active'));
+            event?.target?.classList.add('active');
+            reloadUsers();
+        }
+
         function displayUsers(users) {
             const container = document.getElementById('users-list');
-            const list = Array.isArray(users) ? users : [];
+            let list = Array.isArray(users) ? users : [];
+
+            // Filtre admin
+            if (userAdminFilter === true)  list = list.filter(u => u.is_admin);
+            if (userAdminFilter === false) list = list.filter(u => !u.is_admin);
+
+            // Compte connecté en premier, puis admins, puis autres
+            list = list.slice().sort((a, b) => {
+                const aSelf = currentUser && a.id === currentUser.id ? 1 : 0;
+                const bSelf = currentUser && b.id === currentUser.id ? 1 : 0;
+                if (bSelf !== aSelf) return bSelf - aSelf;
+                if (b.is_admin !== a.is_admin) return (b.is_admin || 0) - (a.is_admin || 0);
+                return a.id - b.id;
+            });
+
             if (list.length === 0) {
                 container.innerHTML = '<div class="empty">Aucun utilisateur</div>';
                 return;
@@ -1680,22 +1775,26 @@
                     </div>`;
                 } else {
                     const isActive = u.is_active !== 0;
+                    const isSelf = currentUser && u.id === currentUser.id;
                     const inactiveBadge = isActive ? '' : '<span class="user-inactive-badge">Désactivé</span>';
+                    const adminBadge = u.is_admin ? '<span class="badge-admin">⭐ Admin</span>' : '';
+                    const selfBorder = isSelf ? 'border-color:#0D9488;border-width:2px;' : '';
+                    const selfAvatarStyle = isSelf ? 'background:linear-gradient(135deg,#0D9488,#0a6b62);' : (isActive ? '' : 'opacity:0.4;');
                     const toggleLabel = isActive ? '🔴 Désactiver' : '🟢 Activer';
                     const toggleClass = isActive ? 'active' : 'inactive';
                     html += `
-                    <div class="user-item" style="${isActive ? '' : 'opacity:0.7;'}">
-                        <div class="user-avatar" style="${isActive ? '' : 'opacity:0.4;'}">${escapeHtml(initials)}</div>
+                    <div class="user-item" style="${isActive ? '' : 'opacity:0.7;'}${selfBorder}">
+                        <div class="user-avatar" style="${selfAvatarStyle}">${escapeHtml(initials)}</div>
                         <div class="user-info">
-                            <div class="user-fullname">${escapeHtml(fullname)}${inactiveBadge}</div>
+                            <div class="user-fullname">${escapeHtml(fullname)}${adminBadge}${inactiveBadge}${isSelf ? ' <span style="font-size:11px;color:#0D9488;font-weight:600;">(vous)</span>' : ''}</div>
                             <div class="user-login">@${escapeHtml(u.login)}</div>
                             ${meta ? `<div class="user-meta">${escapeHtml(meta)}</div>` : ''}
                             ${u.code_anabel ? `<div class="user-meta" style="margin-top:4px;">🏷️ Anabel: <strong>${escapeHtml(u.code_anabel)}</strong></div>` : ''}
                         </div>
                         <div class="user-actions">
                             <button class="btn-edit-user" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Modifier</button>
-                            <button class="btn-toggle-user ${toggleClass}" onclick="toggleUserActive(${u.id}, '${escapeHtml(u.login)}', ${isActive})">${toggleLabel}</button>
-                            <button class="btn-softdelete-user" onclick="softDeleteUser(${u.id}, '${escapeHtml(u.login)}')">🗑️</button>
+                            ${!isSelf ? `<button class="btn-toggle-user ${toggleClass}" onclick="toggleUserActive(${u.id}, '${escapeHtml(u.login)}', ${isActive})">${toggleLabel}</button>` : ''}
+                            ${!isSelf ? `<button class="btn-softdelete-user" onclick="softDeleteUser(${u.id}, '${escapeHtml(u.login)}')">🗑️</button>` : ''}
                         </div>
                     </div>`;
                 }
@@ -1719,6 +1818,10 @@
             document.getElementById('uCodeAnabel').value = isEdit ? (user.code_anabel || '') : '';
             document.getElementById('uPricerId').value = isEdit ? (user.pricer_id || '') : '';
             document.getElementById('uPricerPassword').value = isEdit ? (user.pricer_password || '') : '';
+            const isSelf = isEdit && currentUser && user.id === currentUser.id;
+            document.getElementById('uIsAdmin').checked = isEdit ? !!user.is_admin : false;
+            document.getElementById('uIsAdmin').disabled = isSelf; // ne peut pas se retirer admin
+            document.getElementById('uAdminRow').style.opacity = isSelf ? '0.5' : '1';
             document.getElementById('userModalError').style.display = 'none';
             document.getElementById('userModal').classList.add('active');
         }
@@ -1746,6 +1849,7 @@
 
             const payload = {
                 login,
+                is_admin: document.getElementById('uIsAdmin').checked ? 1 : 0,
                 enseigne: document.getElementById('uEnseigne').value.trim() || null,
                 nom: document.getElementById('uNom').value.trim() || null,
                 prenom: document.getElementById('uPrenom').value.trim() || null,
@@ -1963,14 +2067,31 @@
             } catch (error) { console.error('Erreur:', error); alert('Erreur de connexion'); }
         }
 
-        async function authenticate() {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ login: 'Honfleur', password: 'Honfleur' })
-            });
-            const data = await response.json();
-            authToken = data.token;
+        async function submitLogin() {
+            const login = document.getElementById('loginInput').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const errEl = document.getElementById('loginError');
+            errEl.style.display = 'none';
+            if (!login || !password) { errEl.textContent = 'Login et mot de passe requis.'; errEl.style.display = 'block'; return; }
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ login, password })
+                });
+                const data = await res.json();
+                if (!res.ok) { errEl.textContent = data.error || 'Identifiants incorrects.'; errEl.style.display = 'block'; return; }
+                if (!data.is_admin) { errEl.textContent = 'Accès réservé aux administrateurs.'; errEl.style.display = 'block'; return; }
+                authToken = data.token;
+                // Récupérer les infos du compte connecté
+                const meRes = await authFetch('/api/users/me');
+                const me = await meRes.json();
+                currentUser = { id: me.id, login: me.login, is_admin: me.is_admin };
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('tabUtilisateurs').style.display = '';
+                await loadAllData();
+                setupRealtime();
+            } catch { errEl.textContent = 'Erreur de connexion au serveur.'; errEl.style.display = 'block'; }
         }
 
         function setupRealtime() {
@@ -2048,9 +2169,9 @@
 
         // Charger au démarrage
         window.addEventListener('load', async () => {
-            await authenticate();
-            await loadAllData();
-            setupRealtime();
+            // Login via formulaire — setupRealtime et loadAllData appelés après login réussi
+            document.getElementById('loginPassword').addEventListener('keypress', e => { if (e.key === 'Enter') submitLogin(); });
+            document.getElementById('loginInput').addEventListener('keypress', e => { if (e.key === 'Enter') submitLogin(); });
 
             const aisleInput = document.getElementById('aisleNameInput');
             if (aisleInput) {
