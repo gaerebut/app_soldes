@@ -46,6 +46,7 @@ export default function AddProductScreen() {
   const [selectedAisleId, setSelectedAisleId] = useState<number | null>(null);
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
   const [isRupture, setIsRupture] = useState(false);
+  const [isEanImage, setIsEanImage] = useState(false);
   const lastFetchedEAN = useRef('');
 
   useEffect(() => {
@@ -88,7 +89,7 @@ export default function AddProductScreen() {
         if (info.name) setName((prev) => prev || info.name!);
         if (info.imageUrl) {
           const localUri = await downloadImage(info.imageUrl, ean);
-          if (localUri) setImageUri(localUri);
+          if (localUri) { setImageUri(localUri); setIsEanImage(true); }
         }
       }
     } finally {
@@ -126,6 +127,7 @@ export default function AddProductScreen() {
     const dest = new ExpoFile(dir, fileName);
     source.copy(dest);
     setImageUri(dest.uri);
+    setIsEanImage(false); // photo prise → on revient au grand format
   };
 
   const handleSave = async (rupture = false) => {
@@ -176,7 +178,7 @@ export default function AddProductScreen() {
         await saveLastSelectedAisle(selectedAisleId);
       }
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace(`/check/${result}`);
+      router.replace('/');
     } catch (error) {
       console.error('Error saving product:', error);
       Alert.alert('Erreur', 'Impossible de sauvegarder le produit');
@@ -209,35 +211,56 @@ export default function AddProductScreen() {
 
       {/* Photo */}
       <Text style={styles.label}>Photo du produit *</Text>
-      <TouchableOpacity
-        style={styles.photoContainer}
-        onPress={imageUri ? () => setShowImageFullscreen(true) : takePhoto}
-        activeOpacity={0.7}
-      >
-        {loadingImage && !imageUri ? (
-          <View style={styles.photoPlaceholder}>
-            <ActivityIndicator size="large" color="#E3001B" />
-            <Text style={styles.photoPlaceholderText}>Chargement…</Text>
+      {/* Image EAN : miniature compacte avec bouton appareil photo côte-à-côte */}
+      {imageUri && isEanImage ? (
+        <View style={styles.eanImageRow}>
+          <TouchableOpacity onPress={() => setShowImageFullscreen(true)} activeOpacity={0.8}>
+            <Image source={{ uri: imageUri }} style={styles.eanThumbnail} resizeMode="contain" />
+          </TouchableOpacity>
+          <View style={styles.eanImageActions}>
+            <Text style={styles.eanImageLabel}>Image Open Food Facts</Text>
+            <TouchableOpacity style={styles.eanCameraBtn} onPress={takePhoto} activeOpacity={0.7}>
+              <Ionicons name="camera-outline" size={18} color="#E3001B" />
+              <Text style={styles.eanCameraBtnText}>Remplacer par ma photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowImageFullscreen(true)} activeOpacity={0.7}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+              <Ionicons name="expand-outline" size={15} color={Colors.textLight} />
+              <Text style={{ fontSize: 12, color: Colors.textLight }}>Agrandir</Text>
+            </TouchableOpacity>
           </View>
-        ) : imageUri ? (
-          <>
-            <Image source={{ uri: imageUri }} style={styles.photoImage} />
-            <View style={styles.photoOverlay}>
-              <TouchableOpacity onPress={() => setShowImageFullscreen(true)} style={{ marginRight: 15 }}>
-                <Ionicons name="expand-outline" size={28} color="#FFF" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={takePhoto}>
-                <Ionicons name="refresh-outline" size={28} color="#FFF" />
-              </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.photoContainer}
+          onPress={imageUri ? () => setShowImageFullscreen(true) : takePhoto}
+          activeOpacity={0.7}
+        >
+          {loadingImage && !imageUri ? (
+            <View style={styles.photoPlaceholder}>
+              <ActivityIndicator size="large" color="#E3001B" />
+              <Text style={styles.photoPlaceholderText}>Chargement…</Text>
             </View>
-          </>
-        ) : (
-          <View style={styles.photoPlaceholder}>
-            <Ionicons name="camera-outline" size={40} color={Colors.textLight} />
-            <Text style={styles.photoPlaceholderText}>Prendre une photo</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+          ) : imageUri ? (
+            <>
+              <Image source={{ uri: imageUri }} style={styles.photoImage} />
+              <View style={styles.photoOverlay}>
+                <TouchableOpacity onPress={() => setShowImageFullscreen(true)} style={{ marginRight: 15 }}>
+                  <Ionicons name="expand-outline" size={28} color="#FFF" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={takePhoto}>
+                  <Ionicons name="refresh-outline" size={28} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Ionicons name="camera-outline" size={40} color={Colors.textLight} />
+              <Text style={styles.photoPlaceholderText}>Prendre une photo</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
 
       {/* Product name */}
       <Text style={styles.label}>Nom du produit *</Text>
@@ -512,6 +535,48 @@ const styles = StyleSheet.create({
   },
   dropdownItemTextActive: {
     fontWeight: '700',
+    color: '#E3001B',
+  },
+  // Image EAN compacte
+  eanImageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    padding: 12,
+  },
+  eanThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  eanImageActions: {
+    flex: 1,
+  },
+  eanImageLabel: {
+    fontSize: 12,
+    color: Colors.textLight,
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  eanCameraBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#E3001B',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    alignSelf: 'flex-start',
+  },
+  eanCameraBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: '#E3001B',
   },
 });
