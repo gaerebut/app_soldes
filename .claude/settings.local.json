@@ -163,7 +163,8 @@
       "Bash(ssh -i ~/.ssh/fioulooker_ssh -o StrictHostKeyChecking=no root@187.124.215.103 \"cat > /var/www/fioulooker.fr/server/index.js\")",
       "Bash(ssh -i ~/.ssh/fioulooker_ssh -o StrictHostKeyChecking=no root@187.124.215.103 \"fuser -k 3001/tcp 2>/dev/null; sleep 1; pm2 restart fioulooker && echo OK\")",
       "Bash(ssh -i ~/.ssh/fioulooker_ssh -o StrictHostKeyChecking=no root@187.124.215.103 \"cat > /var/www/fioulooker.fr/server/index.js && pm2 restart fioulooker && echo OK\")",
-      "Bash(curl -s https://fioulooker.fr/app/)"
+      "Bash(curl -s https://fioulooker.fr/app/)",
+      "Bash(git log *)"
     ],
     "additionalDirectories": [
       "C:/Users/gaeta/Desktop/fioulooker"
