@@ -1,3 +1,5 @@
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
@@ -10,14 +12,37 @@ const http = require('http');
 const { Server: SocketIOServer } = require('socket.io');
 
 const BCRYPT_ROUNDS = 10;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PROD = NODE_ENV === 'production';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-const PORT = 3000;
-const JWT_SECRET = 'dlc-manager-secret-key-change-in-production';
-const DB_PATH = path.join(__dirname, 'dlc-manager.db');
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+
+const DEV_JWT_SECRET = 'dlc-manager-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || DEV_JWT_SECRET;
+if (IS_PROD && JWT_SECRET === DEV_JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET must be set in production (env var).');
+  process.exit(1);
+}
+
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'dlc-manager.db');
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
+
+// CORS: '*' en dev, liste blanche en prod via CORS_ORIGINS (séparés par virgule)
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+const CORS_OPTIONS = CORS_ORIGINS.length > 0
+  ? { origin: CORS_ORIGINS, credentials: true }
+  : { origin: '*' };
+
+// Default seed user (uniquement créé si la table users est vide)
+const SEED_USER_LOGIN = process.env.SEED_USER_LOGIN || 'Honfleur';
+const SEED_USER_PASSWORD = process.env.SEED_USER_PASSWORD || 'Honfleur';
+const SEED_USER_CODE_ANABEL = process.env.SEED_USER_CODE_ANABEL || null;
+const SEED_USER_PRICER_ID = process.env.SEED_USER_PRICER_ID || null;
+const SEED_USER_PRICER_PASSWORD = process.env.SEED_USER_PRICER_PASSWORD || null;
 
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -148,31 +173,24 @@ try {
 }
 
 // Seed default user (bcrypt hash synchronous at startup is acceptable — runs once)
-const existingUser = db.prepare('SELECT id, password, code_anabel FROM users WHERE login = ?').get('Honfleur');
+const existingUser = db.prepare('SELECT id, password FROM users WHERE login = ?').get(SEED_USER_LOGIN);
 if (!existingUser) {
-  const hashed = bcrypt.hashSync('Honfleur', BCRYPT_ROUNDS);
+  const hashed = bcrypt.hashSync(SEED_USER_PASSWORD, BCRYPT_ROUNDS);
   db.prepare('INSERT INTO users (login, password, code_anabel, pricer_id, pricer_password) VALUES (?, ?, ?, ?, ?)').run(
-    'Honfleur', hashed,
-    '8314',
-    'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c',
-    '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ'
+    SEED_USER_LOGIN, hashed,
+    SEED_USER_CODE_ANABEL,
+    SEED_USER_PRICER_ID,
+    SEED_USER_PRICER_PASSWORD
   );
-  console.log('Default user "Honfleur" created.');
-} else {
-  // Migrer le mot de passe en clair vers bcrypt si nécessaire
-  if (!existingUser.password.startsWith('$2')) {
-    const hashed = bcrypt.hashSync(existingUser.password, BCRYPT_ROUNDS);
-    db.prepare('UPDATE users SET password = ? WHERE login = ?').run(hashed, 'Honfleur');
-    console.log('Password "Honfleur" migrated to bcrypt.');
+  console.log(`Default user "${SEED_USER_LOGIN}" created.`);
+  if (IS_PROD && SEED_USER_PASSWORD === 'Honfleur') {
+    console.warn('⚠️  WARNING: seed user created with default password — change SEED_USER_PASSWORD in your .env');
   }
-  // Backfill valeurs par défaut si les colonnes sont vides
-  db.prepare(`
-    UPDATE users SET
-      code_anabel     = COALESCE(code_anabel,     '8314'),
-      pricer_id       = COALESCE(pricer_id,       'ef5b2ad5-273b-4fa7-bffd-5e3597986c9c'),
-      pricer_password = COALESCE(pricer_password, '62ee2f8d-15bb-49eb-ac46-3c1e1af08797-rT4OTWhEBKPxucQwzVcnZ5ZQlgE6IYODrMLnLQRznxEHlzwDuo416WBOMaLLTXJ')
-    WHERE login = 'Honfleur'
-  `).run();
+} else if (!existingUser.password.startsWith('$2')) {
+  // Migrer un éventuel mot de passe en clair vers bcrypt
+  const hashed = bcrypt.hashSync(existingUser.password, BCRYPT_ROUNDS);
+  db.prepare('UPDATE users SET password = ? WHERE login = ?').run(hashed, SEED_USER_LOGIN);
+  console.log(`Password for "${SEED_USER_LOGIN}" migrated to bcrypt.`);
 }
 
 console.log('✅ Database connected');
@@ -199,9 +217,9 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 const app = express();
 const server = http.createServer(app);
-const io = new SocketIOServer(server, { cors: { origin: '*' } });
+const io = new SocketIOServer(server, { cors: CORS_OPTIONS });
 
-app.use(cors());
+app.use(cors(CORS_OPTIONS));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
@@ -919,7 +937,8 @@ app.use((err, _req, res, _next) => {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`DLC Manager server running on http://0.0.0.0:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`DLC Manager server running on http://${HOST}:${PORT} (env=${NODE_ENV})`);
+  console.log(`CORS origins: ${CORS_ORIGINS.length ? CORS_ORIGINS.join(', ') : '* (open)'}`);
   console.log(`Socket.IO ready`);
 });
