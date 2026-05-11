@@ -1,15 +1,15 @@
-# Keyboard Logger - Surveillance PC
+# Clavier Save - Surveillance PC
 
-Un programme pour enregistrer les frappes clavier sur votre PC et surveiller qui l'utilise.
+Un programme discret pour enregistrer les frappes clavier sur votre PC et surveiller qui l'utilise.
 
 ## Installation
 
 ### Sur Windows
 
 1. **Télécharger les fichiers** :
-   - `keyboard_logger.py`
-   - `install_keylogger.bat`
-   - `keyboard_logger.vbs`
+   - `clavier_save.py`
+   - `install_clavier_save.bat`
+   - `clavier_save.vbs`
 
 2. **Installer les dépendances** :
    ```bash
@@ -17,28 +17,28 @@ Un programme pour enregistrer les frappes clavier sur votre PC et surveiller qui
    ```
 
 3. **Lancer l'installation** (en tant qu'administrateur) :
-   - Double-cliquez sur `install_keylogger.bat`
+   - Double-cliquez sur `install_clavier_save.bat`
    - Ou exécutez dans PowerShell :
      ```powershell
-     .\install_keylogger.bat
+     .\install_clavier_save.bat
      ```
 
 4. **Lancement manuel** :
    ```bash
-   python keyboard_logger.py
+   python clavier_save.py
    ```
 
 5. **Lancement automatique au démarrage** :
-   - Le script VBS `keyboard_logger.vbs` dans le dossier Démarrage
-   - Le logger se lancera automatiquement sans afficher de fenêtre
+   - Le script VBS `clavier_save.vbs` dans le dossier Démarrage
+   - Le programme se lancera automatiquement sans afficher de fenêtre
 
 ## Utilisation
 
 ### Affichage des logs
 
-Les logs sont enregistrés dans : `%USERPROFILE%\.pc_monitor\`
+Les logs sont enregistrés dans : `%USERPROFILE%\.clavier_save\`
 
-Format des fichiers : `keylog_YYYYMMDD.json`
+Format des fichiers : `save_YYYYMMDD.json`
 
 Exemple :
 ```json
@@ -59,7 +59,7 @@ Exemple :
 ### Consulter les logs
 
 1. Ouvrez l'Explorateur Windows
-2. Allez à : `%USERPROFILE%\.pc_monitor\`
+2. Allez à : `%USERPROFILE%\.clavier_save\`
 3. Ouvrez les fichiers JSON avec un éditeur de texte
 
 ### Arrêter l'enregistrement
@@ -69,7 +69,7 @@ Exemple :
 
 ## Caractéristiques
 
-✅ Enregistrement continu des frappes clavier  
+✅ Enregistrement continu et discret
 ✅ Exécution en arrière-plan sans fenêtre visible  
 ✅ Icône dans la barre des tâches (Windows)  
 ✅ Sauvegarde automatique des logs  
@@ -87,9 +87,9 @@ Exemple :
 ## Localisation des logs
 
 ```
-Windows: C:\Users\[VotreNom]\.pc_monitor\
-Linux: /home/[votrelogin]/.pc_monitor/
-macOS: /Users/[votrelogin]/.pc_monitor/
+Windows: C:\Users\[VotreNom]\.clavier_save\
+Linux: /home/[votrelogin]/.clavier_save/
+macOS: /Users/[votrelogin]/.clavier_save/
 ```
 
 ## Dépannage
@@ -99,15 +99,15 @@ macOS: /Users/[votrelogin]/.pc_monitor/
 - Installez les dépendances : `pip install pynput pillow pystray`
 
 **Q: Pas de logs générés**
-- Vérifiez que le dossier `.pc_monitor` existe dans votre répertoire personnel
+- Vérifiez que le dossier `.clavier_save` existe dans votre répertoire personnel
 - Vérifiez les permissions de fichier
 
 **Q: Comment supprimer les logs?**
-- Accédez au dossier `.pc_monitor` et supprimez les fichiers JSON
+- Accédez au dossier `.clavier_save` et supprimez les fichiers JSON
 
 ## Support des touches spéciales
 
-Le logger reconnaît et enregistre :
+Le programme reconnaît et enregistre :
 - Lettres : `a`, `b`, `c`, etc.
 - Chiffres : `0`, `1`, `2`, etc.
 - Touches spéciales : `[enter]`, `[shift]`, `[ctrl]`, `[alt]`, `[tab]`, `[delete]`, etc.

