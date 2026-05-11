@@ -36,24 +36,17 @@ Un programme discret pour enregistrer les frappes clavier sur votre PC et survei
 
 ### Affichage des logs
 
-Les logs sont enregistrés dans : `%USERPROFILE%\.clavier_save\`
+Les logs sont enregistrés dans : `%USERPROFILE%\.clavier_save\` (ou votre dossier personnalisé)
 
-Format des fichiers : `save_YYYYMMDD.json`
+Format des fichiers : `save_YYYYMMDD.txt` (un fichier par jour)
 
-Exemple :
-```json
-[
-  {
-    "timestamp": "2026-05-11T10:30:45.123456",
-    "key": "a",
-    "type": "press"
-  },
-  {
-    "timestamp": "2026-05-11T10:30:46.234567",
-    "key": "[enter]",
-    "type": "press"
-  }
-]
+Exemple de contenu :
+```
+[2026-05-11T10:30:45.123456] a
+[2026-05-11T10:30:46.234567] [shift]
+[2026-05-11T10:30:47.345678] b
+[2026-05-11T10:30:48.456789] c
+[2026-05-11T10:30:49.567890] [enter]
 ```
 
 ### Consulter les logs
@@ -84,13 +77,25 @@ Exemple :
 ⚠️ À utiliser uniquement sur votre propre appareil  
 ⚠️ Ne pas distribuer ou utiliser sans consentement
 
+## Configuration du dossier personnalisé
+
+Pour sauvegarder les logs dans un dossier spécifique, modifiez le fichier `clavier_save.py` :
+
+```python
+# Environ ligne 140, décommentez et modifiez :
+custom_log_dir = r"C:\Votre\Chemin\Personnalisé"
+```
+
 ## Localisation des logs
 
+Par défaut :
 ```
 Windows: C:\Users\[VotreNom]\.clavier_save\
 Linux: /home/[votrelogin]/.clavier_save/
 macOS: /Users/[votrelogin]/.clavier_save/
 ```
+
+Avec dossier personnalisé : le chemin que vous avez configuré
 
 ## Dépannage
 
