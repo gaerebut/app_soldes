@@ -26,6 +26,8 @@ import {
 import { getTodayStr, formatDateShort, formatDateFR, toLocalDateStr } from '../src/utils/date';
 import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
 import { getPricerToken, getCodeAnabel, apiClient } from '../src/api/client';
+import { useZebraPrinter } from '../src/hooks/useZebraPrinter';
+import PrinterConfigModal from '../src/components/PrinterConfigModal';
 
 type Tab = 'a_traiter' | 'rupture';
 
@@ -43,6 +45,8 @@ export default function HomeScreen() {
   const [productCountByDay, setProductCountByDay] = useState<Record<string, number>>({});
   const [todayPendingCount, setTodayPendingCount] = useState(0);
   const [flashingAll, setFlashingAll] = useState(false);
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+  const printer = useZebraPrinter();
   const router = useRouter();
 
   const loadData = useCallback(async () => {
@@ -345,14 +349,29 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>DLC Manager</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.push('/settings')}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="settings-outline" size={22} color={Colors.text} />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => setShowPrinterModal(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name="print-outline"
+              size={22}
+              color={printer.isConnected ? '#16A34A' : '#DC2626'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push('/settings')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="settings-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <PrinterConfigModal visible={showPrinterModal} onClose={() => setShowPrinterModal(false)} />
 
       {/* Tab buttons */}
       <View style={styles.tabContainer}>
@@ -665,6 +684,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 60, paddingBottom: 8,
   },
   title: { fontSize: 28, fontWeight: '800', color: '#E3001B' },
+  headerButtons: { flexDirection: 'row', gap: 8 },
   headerButton: {
     width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.card,
     alignItems: 'center', justifyContent: 'center',

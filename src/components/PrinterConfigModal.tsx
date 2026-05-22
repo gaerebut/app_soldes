@@ -1,0 +1,157 @@
+import { useRef, useState } from 'react';
+import {
+  View, Text, TouchableOpacity, Modal, StyleSheet,
+  ActivityIndicator, Pressable,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { CameraView } from 'expo-camera';
+import { Colors } from '../constants/theme';
+import { useZebraPrinter } from '../hooks/useZebraPrinter';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export default function PrinterConfigModal({ visible, onClose }: Props) {
+  const printer = useZebraPrinter();
+  const [showScanner, setShowScanner] = useState(false);
+  const [deviceError, setDeviceError] = useState('');
+  const scannedRef = useRef(false);
+
+  return (
+    <>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={styles.content}>
+
+              <View style={styles.header}>
+                <Text style={styles.title}>Imprimante Zebra</Text>
+                <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={24} color={Colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.statusRow}>
+                <View style={[styles.dot, printer.isConnected ? styles.dotGreen : styles.dotRed]} />
+                <Text style={styles.statusText}>
+                  {printer.isConnected
+                    ? `Connectée — ${printer.savedName || printer.savedAddress}`
+                    : 'Non connectée'}
+                </Text>
+                {printer.isConnecting
+                  ? <ActivityIndicator size="small" color={Colors.textSecondary} />
+                  : printer.isConnected
+                    ? (
+                      <TouchableOpacity
+                        style={styles.actionDisconnectBtn}
+                        onPress={() => printer.disconnect()}
+                      >
+                        <Text style={styles.actionDisconnectText}>Déconnecter</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.scanIconBtn}
+                        onPress={() => {
+                          setDeviceError('');
+                          scannedRef.current = false;
+                          setShowScanner(true);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="camera-outline" size={22} color={Colors.primary} />
+                      </TouchableOpacity>
+                    )
+                }
+              </View>
+
+              {!!deviceError && <Text style={styles.errorText}>{deviceError}</Text>}
+
+              <View style={styles.separator} />
+
+              <Text style={styles.discountLabel}>Remise</Text>
+              <View style={styles.discountRow}>
+                <TouchableOpacity
+                  style={[styles.discountBtn, printer.discount <= 10 && styles.discountBtnOff]}
+                  onPress={printer.decrementDiscount}
+                  disabled={printer.discount <= 10}
+                >
+                  <Ionicons name="remove" size={22} color={printer.discount <= 10 ? Colors.textLight : Colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.discountValue}>{printer.discount}%</Text>
+                <TouchableOpacity
+                  style={[styles.discountBtn, printer.discount >= 80 && styles.discountBtnOff]}
+                  onPress={printer.incrementDiscount}
+                  disabled={printer.discount >= 80}
+                >
+                  <Ionicons name="add" size={22} color={printer.discount >= 80 ? Colors.textLight : Colors.text} />
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showScanner} transparent animationType="fade" onRequestClose={() => setShowScanner(false)}>
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr'] }}
+            onBarcodeScanned={async ({ data }) => {
+              if (scannedRef.current) return;
+              scannedRef.current = true;
+              setShowScanner(false);
+              const clean = data.replace(/[:\-\s]/g, '').toUpperCase();
+              const mac = clean.length === 12 && /^[0-9A-F]{12}$/.test(clean)
+                ? clean.match(/.{2}/g)!.join(':')
+                : data;
+              try {
+                await printer.connect(mac, 'Zebra ZQ620');
+              } catch (e: any) {
+                setDeviceError(e.message || 'Connexion échouée');
+              }
+            }}
+          />
+          <View style={styles.scannerFrame}>
+            <Text style={styles.scannerHint}>Scannez le code-barres de l'imprimante</Text>
+          </View>
+          <TouchableOpacity style={styles.scannerCloseBtn} onPress={() => setShowScanner(false)}>
+            <Ionicons name="close" size={28} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  content: {
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36, gap: 14,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontSize: 18, fontWeight: '700', color: Colors.text },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  dotGreen: { backgroundColor: '#16A34A' },
+  dotRed: { backgroundColor: '#DC2626' },
+  statusText: { fontSize: 14, color: Colors.textSecondary, flex: 1 },
+  scanIconBtn: { padding: 6 },
+  actionDisconnectBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' },
+  actionDisconnectText: { color: '#DC2626', fontSize: 13, fontWeight: '700' },
+  errorText: { fontSize: 13, color: '#DC2626', textAlign: 'center' },
+  separator: { height: 1, backgroundColor: Colors.border, marginVertical: 4 },
+  discountLabel: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  discountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
+  discountBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  discountBtnOff: { opacity: 0.35 },
+  discountValue: { fontSize: 24, fontWeight: '800', color: Colors.text, minWidth: 80, textAlign: 'center' },
+  scannerContainer: { flex: 1, backgroundColor: '#000' },
+  scannerFrame: { position: 'absolute', bottom: 100, left: 0, right: 0, alignItems: 'center', padding: 16 },
+  scannerHint: { color: '#FFF', fontSize: 15, fontWeight: '600', textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  scannerCloseBtn: { position: 'absolute', top: 52, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+});
