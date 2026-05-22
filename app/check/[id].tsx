@@ -37,6 +37,8 @@ import Calendar from '../../src/components/Calendar';
 import CameraCapture from '../../src/components/CameraCapture';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { getAllAisles, Aisle } from '../../src/database/aisles';
+import { useZebraPrinter } from '../../src/hooks/useZebraPrinter';
+import { buildSoldeLabel } from '../../src/utils/zplBuilder';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -407,6 +409,16 @@ function ProductCheckView({
   const [aisles, setAisles] = useState<Aisle[]>(aislesCache ?? []);
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
   const [flashing, setFlashing] = useState(false);
+  const printer = useZebraPrinter();
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printQty, setPrintQty] = useState(1);
+  const [pendingDate, setPendingDate] = useState('');
+  const [pairedDevices, setPairedDevices] = useState<{ address: string; name: string }[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [deviceError, setDeviceError] = useState('');
+  const [showDeviceList, setShowDeviceList] = useState(false);
+  const [printError, setPrintError] = useState('');
 
   const FLASH_DURATION_SEC = 4;
 
@@ -556,6 +568,19 @@ function ProductCheckView({
                 )}
               </TouchableOpacity>
             )}
+
+            {/* Bouton imprimante Zebra — à côté du flash */}
+            <TouchableOpacity
+              style={[styles.printerBadge, printer.isConnected ? styles.printerBadgeConnected : styles.printerBadgeDisconnected]}
+              onPress={() => {
+                setShowDeviceList(false);
+                setDeviceError('');
+                setShowPrinterModal(true);
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="print-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
             {!isRupture && (
               product.barcode && (
                 <View style={styles.eanRow}>
@@ -605,7 +630,18 @@ function ProductCheckView({
           {!isRupture && (
             <View style={styles.actions}>
               {selectedDate && (
-                <TouchableOpacity style={styles.okButton} onPress={async () => { await recordCheck(id, today, 'ok', selectedDate); productDataCache.delete(id); onGoToNext(); }} disabled={!isActive}>
+                <TouchableOpacity style={styles.okButton} onPress={async () => {
+                if (printer.isConnected) {
+                  setPendingDate(selectedDate);
+                  setPrintQty(1);
+                  setPrintError('');
+                  setShowPrintModal(true);
+                } else {
+                  await recordCheck(id, today, 'ok', selectedDate);
+                  productDataCache.delete(id);
+                  onGoToNext();
+                }
+              }} disabled={!isActive}>
                   <Ionicons name="checkmark-circle" size={24} color="#FFF" />
                   <Text style={styles.okButtonText}>Valider la DLC</Text>
                 </TouchableOpacity>
@@ -628,6 +664,179 @@ function ProductCheckView({
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ===== Modal config imprimante ===== */}
+      <Modal visible={showPrinterModal} transparent animationType="slide" onRequestClose={() => setShowPrinterModal(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowPrinterModal(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={styles.printerModalContent}>
+
+              <View style={styles.printerModalHeader}>
+                <Text style={styles.printerModalTitle}>Imprimante Zebra</Text>
+                <TouchableOpacity onPress={() => setShowPrinterModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={24} color={Colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.printerStatusRow}>
+                <View style={[styles.printerStatusDot, printer.isConnected ? styles.dotGreen : styles.dotRed]} />
+                <Text style={styles.printerStatusText}>
+                  {printer.isConnected ? `Connectée — ${printer.savedName || printer.savedAddress}` : 'Non connectée'}
+                </Text>
+              </View>
+
+              {!showDeviceList ? (
+                <TouchableOpacity
+                  style={[styles.printerActionButton, printer.isConnected ? styles.actionDisconnect : styles.actionConnect]}
+                  onPress={async () => {
+                    if (printer.isConnected) {
+                      await printer.disconnect();
+                    } else {
+                      setShowDeviceList(true);
+                      setLoadingDevices(true);
+                      setDeviceError('');
+                      try {
+                        const devices = await printer.getPairedDevices();
+                        setPairedDevices(devices);
+                      } catch (e: any) {
+                        setDeviceError(e.message || 'Erreur Bluetooth');
+                      } finally {
+                        setLoadingDevices(false);
+                      }
+                    }
+                  }}
+                  disabled={printer.isConnecting}
+                >
+                  {printer.isConnecting
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <Text style={styles.printerActionText}>{printer.isConnected ? 'Déconnecter' : 'Connecter'}</Text>
+                  }
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.deviceListContainer}>
+                  <TouchableOpacity style={styles.deviceListBack} onPress={() => setShowDeviceList(false)}>
+                    <Ionicons name="chevron-back" size={18} color={Colors.textSecondary} />
+                    <Text style={styles.deviceListTitle}>Appareils appairés</Text>
+                  </TouchableOpacity>
+                  {loadingDevices && <ActivityIndicator style={{ marginVertical: 12 }} color="#E3001B" />}
+                  {!!deviceError && <Text style={styles.deviceError}>{deviceError}</Text>}
+                  {pairedDevices.map((device) => (
+                    <TouchableOpacity
+                      key={device.address}
+                      style={styles.deviceItem}
+                      onPress={async () => {
+                        setShowDeviceList(false);
+                        try {
+                          await printer.connect(device.address, device.name);
+                        } catch (e: any) {
+                          setDeviceError(e.message || 'Connexion échouée');
+                          setShowDeviceList(true);
+                        }
+                      }}
+                    >
+                      <Ionicons name="print-outline" size={18} color={Colors.textSecondary} />
+                      <Text style={styles.deviceItemText}>{device.name}</Text>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.textLight} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.printerSeparator} />
+
+              <Text style={styles.printerDiscountLabel}>Remise</Text>
+              <View style={styles.discountRow}>
+                <TouchableOpacity
+                  style={[styles.discountBtn, printer.discount <= 10 && styles.discountBtnOff]}
+                  onPress={printer.decrementDiscount}
+                  disabled={printer.discount <= 10}
+                >
+                  <Ionicons name="remove" size={22} color={printer.discount <= 10 ? Colors.textLight : Colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.discountValue}>{printer.discount}%</Text>
+                <TouchableOpacity
+                  style={[styles.discountBtn, printer.discount >= 80 && styles.discountBtnOff]}
+                  onPress={printer.incrementDiscount}
+                  disabled={printer.discount >= 80}
+                >
+                  <Ionicons name="add" size={22} color={printer.discount >= 80 ? Colors.textLight : Colors.text} />
+                </TouchableOpacity>
+              </View>
+
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ===== Modal impression étiquette ===== */}
+      <Modal visible={showPrintModal} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.printModalOverlay}>
+          <View style={styles.printModalContent}>
+            <Text style={styles.printModalTitle}>Imprimer l'étiquette</Text>
+            <Text style={styles.printModalSub}>{product?.name}</Text>
+            <Text style={styles.printModalDiscount}>Remise : -{printer.discount}%</Text>
+
+            <View style={styles.discountRow}>
+              <TouchableOpacity
+                style={[styles.discountBtn, printQty <= 1 && styles.discountBtnOff]}
+                onPress={() => setPrintQty((q) => Math.max(1, q - 1))}
+                disabled={printQty <= 1}
+              >
+                <Ionicons name="remove" size={22} color={printQty <= 1 ? Colors.textLight : Colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.discountValue}>{printQty} étiq.</Text>
+              <TouchableOpacity
+                style={[styles.discountBtn, printQty >= 99 && styles.discountBtnOff]}
+                onPress={() => setPrintQty((q) => Math.min(99, q + 1))}
+                disabled={printQty >= 99}
+              >
+                <Ionicons name="add" size={22} color={printQty >= 99 ? Colors.textLight : Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {!!printError && <Text style={styles.printErrorText}>{printError}</Text>}
+
+            <View style={styles.printModalActions}>
+              <TouchableOpacity
+                style={[styles.printModalPrintBtn, printer.isPrinting && styles.printModalPrintBtnOff]}
+                disabled={printer.isPrinting}
+                onPress={async () => {
+                  setPrintError('');
+                  const zpl = buildSoldeLabel(product?.name ?? '', product?.barcode ?? '', printer.discount, printQty);
+                  try {
+                    await printer.print(zpl);
+                    setShowPrintModal(false);
+                    await recordCheck(id, today, 'ok', pendingDate);
+                    productDataCache.delete(id);
+                    onGoToNext();
+                  } catch (e: any) {
+                    setPrintError(e.message || 'Erreur impression');
+                  }
+                }}
+              >
+                {printer.isPrinting
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={styles.printModalPrintText}>Imprimer</Text>
+                }
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.printModalCloseBtn}
+                disabled={printer.isPrinting}
+                onPress={async () => {
+                  setShowPrintModal(false);
+                  await recordCheck(id, today, 'ok', pendingDate);
+                  productDataCache.delete(id);
+                  onGoToNext();
+                }}
+              >
+                <Text style={styles.printModalCloseText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -690,7 +899,7 @@ const styles = StyleSheet.create({
   editNameButtonSubmit: { backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, alignItems: 'center' },
   editNameButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   flashBadge: {
-    position: 'absolute', top: 8, right: 8,
+    position: 'absolute', top: 8, right: 56,
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: '#7C3AED',
     alignItems: 'center', justifyContent: 'center',
@@ -699,4 +908,52 @@ const styles = StyleSheet.create({
   },
   flashBadgeActive: { backgroundColor: '#5B21B6', opacity: 0.8 },
   flashBadgeIcon: { position: 'absolute', bottom: 5, right: 5 },
+  printerBadge: {
+    position: 'absolute', top: 8, right: 8,
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
+  },
+  printerBadgeConnected: { backgroundColor: '#16A34A', shadowColor: '#16A34A' },
+  printerBadgeDisconnected: { backgroundColor: '#DC2626', shadowColor: '#DC2626' },
+  printerModalContent: {
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 36, gap: 14,
+  },
+  printerModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  printerModalTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
+  printerStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  printerStatusDot: { width: 10, height: 10, borderRadius: 5 },
+  dotGreen: { backgroundColor: '#16A34A' },
+  dotRed: { backgroundColor: '#DC2626' },
+  printerStatusText: { fontSize: 14, color: Colors.textSecondary, flex: 1 },
+  printerActionButton: { paddingVertical: 13, borderRadius: 12, alignItems: 'center' },
+  actionConnect: { backgroundColor: '#16A34A' },
+  actionDisconnect: { backgroundColor: '#DC2626' },
+  printerActionText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  deviceListContainer: { gap: 4 },
+  deviceListBack: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  deviceListTitle: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  deviceError: { fontSize: 13, color: '#DC2626', textAlign: 'center', marginVertical: 4 },
+  deviceItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: Colors.card, borderRadius: 10, marginBottom: 4 },
+  deviceItemText: { flex: 1, fontSize: 14, color: Colors.text, fontWeight: '500' },
+  printerSeparator: { height: 1, backgroundColor: Colors.border, marginVertical: 4 },
+  printerDiscountLabel: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  discountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
+  discountBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  discountBtnOff: { opacity: 0.35 },
+  discountValue: { fontSize: 24, fontWeight: '800', color: Colors.text, minWidth: 80, textAlign: 'center' },
+  printModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  printModalContent: { backgroundColor: Colors.background, borderRadius: 20, padding: 24, width: '86%', gap: 14, alignItems: 'center' },
+  printModalTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
+  printModalSub: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  printModalDiscount: { fontSize: 13, fontWeight: '600', color: '#16A34A' },
+  printModalActions: { flexDirection: 'row', gap: 12, marginTop: 4, width: '100%' },
+  printModalPrintBtn: { flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  printModalPrintBtnOff: { opacity: 0.6 },
+  printModalPrintText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  printModalCloseBtn: { flex: 1, backgroundColor: Colors.card, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
+  printModalCloseText: { color: Colors.text, fontSize: 16, fontWeight: '600' },
+  printErrorText: { fontSize: 13, color: '#DC2626', textAlign: 'center' },
 });
