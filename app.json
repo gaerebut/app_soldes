@@ -46,11 +46,10 @@
       "expo-router",
       "expo-sqlite",
       [
-        "react-native-ble-plx",
+        "react-native-ble-manager",
         {
           "isBackgroundEnabled": false,
-          "modes": ["central"],
-          "bluetoothAlwaysPermission": "L'app a besoin du Bluetooth pour se connecter à l'imprimante Zebra."
+          "neverForLocation": true
         }
       ],
       [

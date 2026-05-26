@@ -1,6 +1,9 @@
-import { BleManager, Device, State } from 'react-native-ble-plx';
+import BleManager from 'react-native-ble-manager';
+import {
+  NativeEventEmitter, NativeModules, Platform,
+  PermissionsAndroid, EmitterSubscription,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, PermissionsAndroid } from 'react-native';
 
 // Zebra Link-OS BLE GATT profile (ZQ620 / ZD series)
 const ZEBRA_SERVICE = '38EB4A80-C570-11E3-9507-0002A5D5C51B';
@@ -10,7 +13,9 @@ const STORAGE_DEVICE_ID = 'zebra_ble_id';
 const STORAGE_NAME = 'zebra_name';
 const STORAGE_DISCOUNT = 'zebra_discount';
 
-const SCAN_TIMEOUT_MS = 15000;
+const SCAN_SECONDS = 15;
+
+const bleEmitter = new NativeEventEmitter(NativeModules.BleManager);
 
 type StateListener = () => void;
 
@@ -31,19 +36,10 @@ export interface PrinterState {
   foundDevices: FoundDevice[];
 }
 
-function zplToBase64(chunk: string): string {
-  // Safe base64 for ZPL (ASCII + Latin-1 for French accents)
-  let bin = '';
-  for (let i = 0; i < chunk.length; i++) {
-    bin += String.fromCharCode(chunk.charCodeAt(i) & 0xff);
-  }
-  return btoa(bin);
-}
-
 class ZebraPrinterService {
-  private manager = new BleManager();
-  private connectedDevice: Device | null = null;
-  private scanTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectedDeviceId: string | null = null;
+  private currentMTU = 185;
+  private subs: EmitterSubscription[] = [];
   private listeners = new Set<StateListener>();
   private initialized = false;
 
@@ -61,6 +57,7 @@ class ZebraPrinterService {
   async init(): Promise<void> {
     if (this.initialized) return;
     this.initialized = true;
+
     const [id, name, disc] = await Promise.all([
       AsyncStorage.getItem(STORAGE_DEVICE_ID),
       AsyncStorage.getItem(STORAGE_NAME),
@@ -69,6 +66,39 @@ class ZebraPrinterService {
     this.state.savedDeviceId = id;
     this.state.savedName = name;
     this.state.discount = disc ? parseInt(disc, 10) : 50;
+
+    await BleManager.start({ showAlert: false });
+
+    this.subs.push(
+      bleEmitter.addListener('BleManagerDiscoverPeripheral', (p: any) => {
+        const name = p.name || p.advertising?.localName || '';
+        if (!name) return;
+        const n = name.toLowerCase();
+        if (n.includes('zebra') || n.includes('zq') || n.includes('zd') || n.includes('zt')) {
+          if (!this.state.foundDevices.find(d => d.id === p.id)) {
+            this.state.foundDevices = [
+              ...this.state.foundDevices,
+              { id: p.id, name, rssi: p.rssi ?? 0 },
+            ];
+            this.notify();
+          }
+        }
+      }),
+      bleEmitter.addListener('BleManagerStopScan', () => {
+        if (this.state.isScanning) {
+          this.state.isScanning = false;
+          this.notify();
+        }
+      }),
+      bleEmitter.addListener('BleManagerDisconnectPeripheral', (data: any) => {
+        if (data.peripheral === this.connectedDeviceId) {
+          this.connectedDeviceId = null;
+          this.state.isConnected = false;
+          this.notify();
+        }
+      }),
+    );
+
     this.notify();
   }
 
@@ -93,60 +123,21 @@ class ZebraPrinterService {
         'android.permission.BLUETOOTH_CONNECT' as any,
       ]);
     } else {
-      await PermissionsAndroid.request(
-        'android.permission.ACCESS_FINE_LOCATION' as any,
-      );
+      await PermissionsAndroid.request('android.permission.ACCESS_FINE_LOCATION' as any);
     }
-  }
-
-  private waitForBleReady(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const sub = this.manager.onStateChange((s) => {
-        if (s === State.PoweredOn) {
-          sub.remove();
-          resolve();
-        } else if (s === State.PoweredOff || s === State.Unauthorized) {
-          sub.remove();
-          reject(new Error('Bluetooth désactivé ou non autorisé'));
-        }
-      }, true);
-    });
   }
 
   async startScan(): Promise<void> {
     await this.requestAndroidPermissions();
-    await this.waitForBleReady();
-
     this.state.isScanning = true;
     this.state.foundDevices = [];
     this.notify();
-
-    this.manager.startDeviceScan(null, { allowDuplicates: false }, (_err, device) => {
-      if (!device) return;
-      const name = device.name || device.localName || '';
-      if (!name) return;
-      const n = name.toLowerCase();
-      if (n.includes('zebra') || n.includes('zq') || n.includes('zd') || n.includes('zt')) {
-        if (!this.state.foundDevices.find(d => d.id === device.id)) {
-          this.state.foundDevices = [
-            ...this.state.foundDevices,
-            { id: device.id, name, rssi: device.rssi ?? 0 },
-          ];
-          this.notify();
-        }
-      }
-    });
-
-    this.scanTimer = setTimeout(() => this.stopScan(), SCAN_TIMEOUT_MS);
+    await BleManager.scan([], SCAN_SECONDS, false);
   }
 
   stopScan(): void {
-    if (this.scanTimer) {
-      clearTimeout(this.scanTimer);
-      this.scanTimer = null;
-    }
     if (this.state.isScanning) {
-      this.manager.stopDeviceScan();
+      BleManager.stopScan();
       this.state.isScanning = false;
       this.notify();
     }
@@ -157,20 +148,17 @@ class ZebraPrinterService {
     this.state.isConnecting = true;
     this.notify();
     try {
-      let device = await this.manager.connectToDevice(deviceId, { requestMTU: 512 });
-      device = await device.discoverAllServicesAndCharacteristics();
-
-      device.onDisconnected(() => {
-        this.connectedDevice = null;
-        this.state.isConnected = false;
-        this.notify();
-      });
-
-      this.connectedDevice = device;
+      await BleManager.connect(deviceId);
+      await BleManager.retrieveServices(deviceId);
+      try {
+        this.currentMTU = await BleManager.requestMTU(deviceId, 512);
+      } catch {
+        this.currentMTU = 185;
+      }
+      this.connectedDeviceId = deviceId;
       this.state.isConnected = true;
       this.state.savedDeviceId = deviceId;
       this.state.savedName = deviceName;
-
       await Promise.all([
         AsyncStorage.setItem(STORAGE_DEVICE_ID, deviceId),
         AsyncStorage.setItem(STORAGE_NAME, deviceName),
@@ -186,28 +174,29 @@ class ZebraPrinterService {
 
   async disconnect(): Promise<void> {
     try {
-      await this.connectedDevice?.cancelConnection();
+      if (this.connectedDeviceId) await BleManager.disconnect(this.connectedDeviceId);
     } catch { /* ignore */ }
-    this.connectedDevice = null;
+    this.connectedDeviceId = null;
     this.state.isConnected = false;
     this.notify();
   }
 
   async print(zpl: string): Promise<void> {
-    if (!this.connectedDevice || !this.state.isConnected) {
+    if (!this.connectedDeviceId || !this.state.isConnected) {
       throw new Error('Imprimante non connectée');
     }
     this.state.isPrinting = true;
     this.notify();
     try {
-      const mtu = this.connectedDevice.mtu ?? 512;
-      const chunkSize = Math.max(20, mtu - 3);
-      for (let i = 0; i < zpl.length; i += chunkSize) {
-        const b64 = zplToBase64(zpl.substring(i, i + chunkSize));
-        await this.connectedDevice.writeCharacteristicWithResponseForService(
+      // Convert ZPL (ASCII + Latin-1 for French accents) to byte array
+      const bytes = Array.from(zpl).map(c => c.charCodeAt(0) & 0xff);
+      const chunkSize = Math.max(20, this.currentMTU - 3);
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        await BleManager.write(
+          this.connectedDeviceId,
           ZEBRA_SERVICE,
           ZEBRA_WRITE_CHAR,
-          b64,
+          bytes.slice(i, i + chunkSize),
         );
       }
     } finally {
