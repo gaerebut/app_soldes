@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.gaerebut.dlcmanager",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "L'app a besoin du Bluetooth pour se connecter à l'imprimante Zebra.",
         "NSBluetoothPeripheralUsageDescription": "L'app a besoin du Bluetooth pour se connecter à l'imprimante Zebra."
