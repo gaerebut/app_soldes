@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, StyleSheet,
   ActivityIndicator, Pressable, FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView } from 'expo-camera';
 import { Colors } from '../constants/theme';
 import { useZebraPrinter } from '../hooks/useZebraPrinter';
 import type { FoundDevice } from '../services/ZebraPrinterService';
@@ -16,8 +17,10 @@ interface Props {
 export default function PrinterConfigModal({ visible, onClose }: Props) {
   const printer = useZebraPrinter();
   const [connectError, setConnectError] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const scannedRef = useRef(false);
 
-  async function handleConnect(device: FoundDevice) {
+  async function handleConnectDevice(device: FoundDevice) {
     setConnectError('');
     try {
       await printer.connect(device.id, device.name);
@@ -35,123 +38,164 @@ export default function PrinterConfigModal({ visible, onClose }: Props) {
     }
   }
 
+  async function handleBarcode(data: string) {
+    if (scannedRef.current) return;
+    scannedRef.current = true;
+    setShowScanner(false);
+    setConnectError('');
+    // Extract MAC from the 12-char hex barcode on the printer
+    const clean = data.replace(/[:\-\s]/g, '').toUpperCase();
+    const mac = clean.length === 12 && /^[0-9A-F]{12}$/.test(clean)
+      ? clean.match(/.{2}/g)!.join(':')
+      : data;
+    try {
+      await printer.connect(mac, 'Zebra ZQ620');
+    } catch (e: any) {
+      setConnectError(e.message || 'Connexion échouée');
+    }
+  }
+
+  const disconnected = !printer.isConnected && !printer.isConnecting;
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <View style={styles.content}>
+    <>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={styles.content}>
 
-            <View style={styles.header}>
-              <Text style={styles.title}>Imprimante Zebra</Text>
-              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={24} color={Colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Status row */}
-            <View style={styles.statusRow}>
-              <View style={[styles.dot, printer.isConnected ? styles.dotGreen : styles.dotRed]} />
-              <Text style={styles.statusText} numberOfLines={1}>
-                {printer.isConnected
-                  ? `Connectée — ${printer.savedName || printer.savedDeviceId}`
-                  : printer.isScanning
-                    ? 'Recherche en cours…'
-                    : 'Non connectée'}
-              </Text>
-
-              {printer.isConnecting ? (
-                <ActivityIndicator size="small" color={Colors.textSecondary} />
-              ) : printer.isConnected ? (
-                <TouchableOpacity
-                  style={styles.disconnectBtn}
-                  onPress={() => printer.disconnect()}
-                >
-                  <Text style={styles.disconnectText}>Déconnecter</Text>
+              <View style={styles.header}>
+                <Text style={styles.title}>Imprimante Zebra</Text>
+                <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={24} color={Colors.text} />
                 </TouchableOpacity>
-              ) : printer.isScanning ? (
-                <TouchableOpacity
-                  style={styles.stopBtn}
-                  onPress={() => printer.stopScan()}
-                >
-                  <Text style={styles.stopText}>Arrêter</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.scanBtn}
-                  onPress={handleScan}
-                >
-                  <Ionicons name="bluetooth" size={16} color="#fff" style={styles.scanBtnIcon} />
-                  <Text style={styles.scanBtnText}>Rechercher</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Scanning spinner */}
-            {printer.isScanning && printer.foundDevices.length === 0 && (
-              <View style={styles.scanningRow}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-                <Text style={styles.scanningText}>Recherche des imprimantes Zebra…</Text>
               </View>
-            )}
 
-            {/* Found devices list */}
-            {printer.foundDevices.length > 0 && (
-              <FlatList
-                data={printer.foundDevices}
-                keyExtractor={(d) => d.id}
-                scrollEnabled={false}
-                style={styles.deviceList}
-                renderItem={({ item }) => (
-                  <View style={styles.deviceRow}>
-                    <Ionicons name="print-outline" size={20} color={Colors.textSecondary} />
-                    <View style={styles.deviceInfo}>
-                      <Text style={styles.deviceName}>{item.name}</Text>
-                      <Text style={styles.deviceId} numberOfLines={1}>{item.id}</Text>
+              {/* Status row */}
+              <View style={styles.statusRow}>
+                <View style={[styles.dot, printer.isConnected ? styles.dotGreen : styles.dotRed]} />
+                <Text style={styles.statusText} numberOfLines={1}>
+                  {printer.isConnected
+                    ? `Connectée — ${printer.savedName || printer.savedDeviceId}`
+                    : printer.isScanning
+                      ? 'Recherche en cours…'
+                      : 'Non connectée'}
+                </Text>
+
+                {printer.isConnecting ? (
+                  <ActivityIndicator size="small" color={Colors.textSecondary} />
+                ) : printer.isConnected ? (
+                  <TouchableOpacity style={styles.disconnectBtn} onPress={() => printer.disconnect()}>
+                    <Text style={styles.disconnectText}>Déconnecter</Text>
+                  </TouchableOpacity>
+                ) : printer.isScanning ? (
+                  <TouchableOpacity style={styles.stopBtn} onPress={() => printer.stopScan()}>
+                    <Text style={styles.stopText}>Arrêter</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Connection buttons (disconnected state only) */}
+              {disconnected && (
+                <View style={styles.connectActions}>
+                  <TouchableOpacity
+                    style={styles.barcodeBtn}
+                    onPress={() => { scannedRef.current = false; setShowScanner(true); }}
+                  >
+                    <Ionicons name="camera-outline" size={18} color={Colors.primary} />
+                    <Text style={styles.barcodeBtnText}>Scanner le code-barres</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.bleBtn} onPress={handleScan}>
+                    <Ionicons name="bluetooth" size={16} color="#fff" />
+                    <Text style={styles.bleBtnText}>Rechercher</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Scanning spinner */}
+              {printer.isScanning && printer.foundDevices.length === 0 && (
+                <View style={styles.scanningRow}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.scanningText}>Recherche des imprimantes Zebra…</Text>
+                </View>
+              )}
+
+              {/* Found devices list */}
+              {printer.foundDevices.length > 0 && (
+                <FlatList
+                  data={printer.foundDevices}
+                  keyExtractor={(d) => d.id}
+                  scrollEnabled={false}
+                  style={styles.deviceList}
+                  renderItem={({ item }) => (
+                    <View style={styles.deviceRow}>
+                      <Ionicons name="print-outline" size={20} color={Colors.textSecondary} />
+                      <View style={styles.deviceInfo}>
+                        <Text style={styles.deviceName}>{item.name}</Text>
+                        <Text style={styles.deviceId} numberOfLines={1}>{item.id}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.connectBtn, printer.isConnecting && styles.connectBtnOff]}
+                        onPress={() => handleConnectDevice(item)}
+                        disabled={printer.isConnecting}
+                      >
+                        {printer.isConnecting ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.connectBtnText}>Connecter</Text>
+                        )}
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.connectBtn, printer.isConnecting && styles.connectBtnOff]}
-                      onPress={() => handleConnect(item)}
-                      disabled={printer.isConnecting}
-                    >
-                      {printer.isConnecting ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={styles.connectBtnText}>Connecter</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-            )}
+                  )}
+                />
+              )}
 
-            {!!connectError && <Text style={styles.errorText}>{connectError}</Text>}
+              {!!connectError && <Text style={styles.errorText}>{connectError}</Text>}
 
-            <View style={styles.separator} />
+              <View style={styles.separator} />
 
-            {/* Discount stepper */}
-            <Text style={styles.discountLabel}>Remise</Text>
-            <View style={styles.discountRow}>
-              <TouchableOpacity
-                style={[styles.discountBtn, printer.discount <= 10 && styles.discountBtnOff]}
-                onPress={printer.decrementDiscount}
-                disabled={printer.discount <= 10}
-              >
-                <Ionicons name="remove" size={22} color={printer.discount <= 10 ? Colors.textLight : Colors.text} />
-              </TouchableOpacity>
-              <Text style={styles.discountValue}>{printer.discount}%</Text>
-              <TouchableOpacity
-                style={[styles.discountBtn, printer.discount >= 80 && styles.discountBtnOff]}
-                onPress={printer.incrementDiscount}
-                disabled={printer.discount >= 80}
-              >
-                <Ionicons name="add" size={22} color={printer.discount >= 80 ? Colors.textLight : Colors.text} />
-              </TouchableOpacity>
+              {/* Discount stepper */}
+              <Text style={styles.discountLabel}>Remise</Text>
+              <View style={styles.discountRow}>
+                <TouchableOpacity
+                  style={[styles.discountBtn, printer.discount <= 10 && styles.discountBtnOff]}
+                  onPress={printer.decrementDiscount}
+                  disabled={printer.discount <= 10}
+                >
+                  <Ionicons name="remove" size={22} color={printer.discount <= 10 ? Colors.textLight : Colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.discountValue}>{printer.discount}%</Text>
+                <TouchableOpacity
+                  style={[styles.discountBtn, printer.discount >= 80 && styles.discountBtnOff]}
+                  onPress={printer.incrementDiscount}
+                  disabled={printer.discount >= 80}
+                >
+                  <Ionicons name="add" size={22} color={printer.discount >= 80 ? Colors.textLight : Colors.text} />
+                </TouchableOpacity>
+              </View>
+
             </View>
-
-          </View>
+          </Pressable>
         </Pressable>
-      </Pressable>
-    </Modal>
+      </Modal>
+
+      {/* Barcode scanner overlay */}
+      <Modal visible={showScanner} transparent animationType="fade" onRequestClose={() => setShowScanner(false)}>
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr'] }}
+            onBarcodeScanned={({ data }) => handleBarcode(data)}
+          />
+          <View style={styles.scannerFrame}>
+            <Text style={styles.scannerHint}>Scannez le code-barres de l'imprimante</Text>
+          </View>
+          <TouchableOpacity style={styles.scannerCloseBtn} onPress={() => setShowScanner(false)}>
+            <Ionicons name="close" size={28} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -179,13 +223,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
   },
   stopText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  scanBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+  connectActions: { flexDirection: 'row', gap: 10 },
+  barcodeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1.5, borderColor: Colors.primary,
+  },
+  barcodeBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  bleBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 10, borderRadius: 10,
     backgroundColor: Colors.primary,
   },
-  scanBtnIcon: {},
-  scanBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  bleBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   scanningRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scanningText: { fontSize: 13, color: Colors.textSecondary },
   deviceList: { maxHeight: 200 },
@@ -216,4 +266,18 @@ const styles = StyleSheet.create({
   },
   discountBtnOff: { opacity: 0.35 },
   discountValue: { fontSize: 24, fontWeight: '800', color: Colors.text, minWidth: 80, textAlign: 'center' },
+  scannerContainer: { flex: 1, backgroundColor: '#000' },
+  scannerFrame: {
+    position: 'absolute', bottom: 100, left: 0, right: 0,
+    alignItems: 'center', padding: 16,
+  },
+  scannerHint: {
+    color: '#FFF', fontSize: 15, fontWeight: '600', textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
+  },
+  scannerCloseBtn: {
+    position: 'absolute', top: 52, right: 20,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center',
+  },
 });
