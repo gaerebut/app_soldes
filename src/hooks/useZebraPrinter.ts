@@ -14,8 +14,9 @@ export function useZebraPrinter() {
 
   return {
     ...state,
-    getPairedDevices: () => zebraPrinterService.getPairedDevices(),
-    connect: (address: string, name: string) => zebraPrinterService.connect(address, name),
+    startScan: () => zebraPrinterService.startScan(),
+    stopScan: () => zebraPrinterService.stopScan(),
+    connect: (id: string, name: string) => zebraPrinterService.connect(id, name),
     disconnect: () => zebraPrinterService.disconnect(),
     print: (zpl: string) => zebraPrinterService.print(zpl),
     incrementDiscount: () => zebraPrinterService.setDiscount(state.discount + 5),
