@@ -46,6 +46,14 @@
       "expo-router",
       "expo-sqlite",
       [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "L'app a besoin du Bluetooth pour se connecter à l'imprimante Zebra."
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "L'app a besoin de la camera pour scanner les codes-barres."
