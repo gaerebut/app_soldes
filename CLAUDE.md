@@ -46,13 +46,15 @@ src/
   api/client.ts          Client HTTP centralisé (apiClient)
   database/              products.ts, aisles.ts, db.ts (migrations SQLite)
   services/
-    ZebraPrinterService.ts  ⭐ Singleton Bluetooth Zebra (NOUVEAU)
+    ZebraPrinterService.ts  ⭐ Singleton BLE Zebra (react-native-ble-manager)
   hooks/
-    useZebraPrinter.ts   ⭐ Hook React état imprimante (NOUVEAU)
+    useZebraPrinter.ts   ⭐ Hook React état imprimante
   utils/
-    zplBuilder.ts        ⭐ Générateur ZPL étiquettes soldées (NOUVEAU)
+    zplBuilder.ts        ⭐ Générateur ZPL étiquettes soldées
     date.ts              Formatage dates FR
-  components/            Calendar, CameraCapture, SyncStatus…
+  components/
+    PrinterConfigModal.tsx  ⭐ Modal config imprimante (partagé index + check)
+    Calendar, CameraCapture, SyncStatus…
   sync/                  Sync multi-appareils (SyncManager, etc.)
   constants/theme.ts     Colors, Categories
 
@@ -74,7 +76,7 @@ server/
 - [x] Notifications locales
 - [x] Back-office web (users, stats)
 - [x] Config WhatsApp (numéros)
-- [x] **Imprimante Zebra ZQ620 Bluetooth** ← en cours
+- [x] **Imprimante Zebra ZQ620 Bluetooth BLE** ✅
 
 ---
 
@@ -82,35 +84,44 @@ server/
 
 ### Matériel
 - Modèle : **Zebra ZQ620**
-- Connexion : **Bluetooth Classic (SPP)**
+- Connexion : **Bluetooth Low Energy (BLE / GATT)**
 - Étiquettes : **60×40mm** (480×320 dots à 203 DPI)
+
+### Librairie
+`react-native-ble-manager@^12.3.2` — fonctionne Android + iOS, pas de dépendance externe.
+
+> ⚠️ `react-native-ble-plx` v3.x était cassé : dépendait de `MultiplatformBleAdapter@0.2.0`
+> qui n'existe pas sur CocoaPods. Ne pas revenir à cette lib.
 
 ### Template ZPL
 Label "A CONSOMMER RAPIDEMENT" avec badge de remise, nom produit et code-barres.
 Généré par `src/utils/zplBuilder.ts` → `buildSoldeLabel(name, barcode, discountPercent, quantity)`.
 
-### Librairie
-`react-native-bluetooth-classic@^1.60.0-rc0` — **requiert une build native** (pas compatible Expo Go).
+### GATT UUIDs Zebra (ZQ620 / Link-OS)
+- Service  : `38EB4A80-C570-11E3-9507-0002A5D5C51B`
+- Write char: `38EB4A82-C570-11E3-9507-0002A5D5C51B`
 
-### ⚠️ Prérequis pour que ça fonctionne
-```bash
-npm install
-npx expo prebuild          # génère les dossiers android/ et ios/
-npx expo run:android       # ou EAS Build
-```
-
-### Flux UX (check/[id].tsx)
-1. Icône imprimante (rouge/verte) à droite du bouton flash dans le header
-2. **Clic icône** → modal config : Connect/Déconnecter + réglage remise (10-80%, pas de 5)
-3. **Valider la DLC** (si imprimante connectée) → modal impression : stepper quantité + [Imprimer] + [Fermer]
-   - [Imprimer] → envoie ZPL → enregistre le check → produit suivant
-   - [Fermer] → enregistre le check sans imprimer → produit suivant
+### Flux UX
+1. Icône imprimante (rouge/verte) dans le header — écrans accueil ET check
+2. **Clic icône** → `PrinterConfigModal` :
+   - Deux boutons : [📷 Scanner le code-barres] (connexion directe par MAC) + [🔵 Rechercher] (scan BLE actif)
+   - Quand connectée : bouton Déconnecter
+   - Stepper remise 10–80% (pas de 5)
+3. **Valider la DLC** (si connectée) → modal impression : stepper quantité + [Imprimer] + [Fermer]
 
 ### Fichiers concernés
-- `src/services/ZebraPrinterService.ts` — connexion BT + état persisté (AsyncStorage)
+- `src/services/ZebraPrinterService.ts` — BLE init/scan/connect/print (react-native-ble-manager)
 - `src/hooks/useZebraPrinter.ts` — hook React abonné au service
 - `src/utils/zplBuilder.ts` — générateur ZPL
-- `app/check/[id].tsx` — intégration UI (badge + 2 modals)
+- `src/components/PrinterConfigModal.tsx` — modal partagé (scanner + BLE scan + remise)
+- `app/check/[id].tsx` — intégration UI header + modal impression
+- `app/index.tsx` — icône imprimante dans header
+
+### Build EAS
+- Android APK : `eas build --platform android --profile preview`
+- iOS IPA : `eas build --platform ios --profile preview`
+- `.easignore` exclut `android/` et `ios/` → EAS fait le prebuild propre
+- `react-native.config.js` vide (plus d'exclusions nécessaires)
 
 ---
 
@@ -136,9 +147,9 @@ cd server && npm install && npm start
 # App (Expo Go — sans BT)
 npm start
 
-# App avec BT (build native requise)
-npx expo prebuild
-npx expo run:android
+# Build natif EAS
+eas build --platform android --profile preview
+eas build --platform ios --profile preview
 ```
 
 ---
@@ -150,4 +161,4 @@ npx expo run:android
 - La section concernée par les changements en cours
 - La date de dernière mise à jour ci-dessous
 
-**Dernière mise à jour** : 2026-05-22
+**Dernière mise à jour** : 2026-05-26
