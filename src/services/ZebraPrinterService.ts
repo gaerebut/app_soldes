@@ -15,8 +15,6 @@ const STORAGE_DISCOUNT = 'zebra_discount';
 
 const SCAN_SECONDS = 15;
 
-const bleEmitter = new NativeEventEmitter(NativeModules.BleManager);
-
 type StateListener = () => void;
 
 export interface FoundDevice {
@@ -42,6 +40,7 @@ class ZebraPrinterService {
   private subs: EmitterSubscription[] = [];
   private listeners = new Set<StateListener>();
   private initialized = false;
+  private bleAvailable = false;
 
   private state: PrinterState = {
     savedDeviceId: null,
@@ -67,37 +66,48 @@ class ZebraPrinterService {
     this.state.savedName = name;
     this.state.discount = disc ? parseInt(disc, 10) : 50;
 
-    await BleManager.start({ showAlert: false });
+    try {
+      if (!NativeModules.BleManager) {
+        this.notify();
+        return;
+      }
 
-    this.subs.push(
-      bleEmitter.addListener('BleManagerDiscoverPeripheral', (p: any) => {
-        const name = p.name || p.advertising?.localName || '';
-        if (!name) return;
-        const n = name.toLowerCase();
-        if (n.includes('zebra') || n.includes('zq') || n.includes('zd') || n.includes('zt')) {
-          if (!this.state.foundDevices.find(d => d.id === p.id)) {
-            this.state.foundDevices = [
-              ...this.state.foundDevices,
-              { id: p.id, name, rssi: p.rssi ?? 0 },
-            ];
+      const bleEmitter = new NativeEventEmitter(NativeModules.BleManager);
+      await BleManager.start({ showAlert: false });
+      this.bleAvailable = true;
+
+      this.subs.push(
+        bleEmitter.addListener('BleManagerDiscoverPeripheral', (p: any) => {
+          const name = p.name || p.advertising?.localName || '';
+          if (!name) return;
+          const n = name.toLowerCase();
+          if (n.includes('zebra') || n.includes('zq') || n.includes('zd') || n.includes('zt')) {
+            if (!this.state.foundDevices.find(d => d.id === p.id)) {
+              this.state.foundDevices = [
+                ...this.state.foundDevices,
+                { id: p.id, name, rssi: p.rssi ?? 0 },
+              ];
+              this.notify();
+            }
+          }
+        }),
+        bleEmitter.addListener('BleManagerStopScan', () => {
+          if (this.state.isScanning) {
+            this.state.isScanning = false;
             this.notify();
           }
-        }
-      }),
-      bleEmitter.addListener('BleManagerStopScan', () => {
-        if (this.state.isScanning) {
-          this.state.isScanning = false;
-          this.notify();
-        }
-      }),
-      bleEmitter.addListener('BleManagerDisconnectPeripheral', (data: any) => {
-        if (data.peripheral === this.connectedDeviceId) {
-          this.connectedDeviceId = null;
-          this.state.isConnected = false;
-          this.notify();
-        }
-      }),
-    );
+        }),
+        bleEmitter.addListener('BleManagerDisconnectPeripheral', (data: any) => {
+          if (data.peripheral === this.connectedDeviceId) {
+            this.connectedDeviceId = null;
+            this.state.isConnected = false;
+            this.notify();
+          }
+        }),
+      );
+    } catch (e) {
+      // BLE unavailable (simulator, permissions denied at OS level, etc.)
+    }
 
     this.notify();
   }
@@ -128,6 +138,7 @@ class ZebraPrinterService {
   }
 
   async startScan(): Promise<void> {
+    if (!this.bleAvailable) throw new Error('Bluetooth non disponible sur cet appareil');
     await this.requestAndroidPermissions();
     this.state.isScanning = true;
     this.state.foundDevices = [];
@@ -144,6 +155,7 @@ class ZebraPrinterService {
   }
 
   async connect(deviceId: string, deviceName: string): Promise<void> {
+    if (!this.bleAvailable) throw new Error('Bluetooth non disponible sur cet appareil');
     this.stopScan();
     this.state.isConnecting = true;
     this.notify();
@@ -188,7 +200,6 @@ class ZebraPrinterService {
     this.state.isPrinting = true;
     this.notify();
     try {
-      // Convert ZPL (ASCII + Latin-1 for French accents) to byte array
       const bytes = Array.from(zpl).map(c => c.charCodeAt(0) & 0xff);
       const chunkSize = Math.max(20, this.currentMTU - 3);
       for (let i = 0; i < bytes.length; i += chunkSize) {
