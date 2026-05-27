@@ -218,11 +218,11 @@ export default function HomeScreen() {
                 try {
                   const me = await apiClient.users.me();
                   if (!codeAnabel && me?.code_anabel) {
-                    codeAnabel = me.code_anabel;
+                    codeAnabel = me.code_anabel as string;
                     await AsyncStorage.setItem('dlc_code_anabel', codeAnabel);
                   }
                   if (!pricerToken && me?.pricer_token) {
-                    pricerToken = me.pricer_token;
+                    pricerToken = me.pricer_token as string;
                     await AsyncStorage.setItem('dlc_pricer_token', pricerToken);
                   }
                 } catch {}

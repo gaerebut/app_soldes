@@ -3,7 +3,7 @@
     "name": "DLC Manager",
     "slug": "dlc-manager",
     "version": "1.0.0",
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

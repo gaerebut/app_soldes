@@ -143,7 +143,7 @@ class ZebraPrinterService {
     this.state.isScanning = true;
     this.state.foundDevices = [];
     this.notify();
-    await BleManager.scan([], SCAN_SECONDS, false);
+    await BleManager.scan({ serviceUUIDs: [], seconds: SCAN_SECONDS, allowDuplicates: false });
   }
 
   stopScan(): void {

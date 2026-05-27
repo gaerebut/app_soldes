@@ -359,7 +359,7 @@ export default function CheckScreen() {
                   onPress={async () => {
                     const prod = productDataCache.get(currentId)?.product;
                     if (prod) {
-                      await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, prod.image_uri);
+                      await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, prod.image_uri ?? undefined);
                       productDataCache.delete(currentId);
                     }
                     setShowEditNameModal(false);
@@ -570,8 +570,6 @@ function ProductCheckView({
             <TouchableOpacity
               style={[styles.printerBadge, printer.isConnected ? styles.printerBadgeConnected : styles.printerBadgeDisconnected]}
               onPress={() => {
-                setShowDeviceList(false);
-                setDeviceError('');
                 setShowPrinterModal(true);
               }}
               activeOpacity={0.75}
@@ -600,11 +598,11 @@ function ProductCheckView({
               </TouchableOpacity>
               {showAisleDropdown && (
                 <View style={styles.aisleDropdownCompact}>
-                  <TouchableOpacity style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri, undefined); setShowAisleDropdown(false); }}>
+                  <TouchableOpacity style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri ?? undefined, undefined); setShowAisleDropdown(false); }}>
                     <Text style={[styles.aisleDropdownItemText, !product.aisle_id && styles.aisleDropdownItemTextActive]}>Aucun rayon</Text>
                   </TouchableOpacity>
                   {aisles.map((a) => (
-                    <TouchableOpacity key={a.id} style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri, a.id); setShowAisleDropdown(false); }}>
+                    <TouchableOpacity key={a.id} style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri ?? undefined, a.id); setShowAisleDropdown(false); }}>
                       <Text style={[styles.aisleDropdownItemText, product.aisle_id === a.id && styles.aisleDropdownItemTextActive]}>{a.name || '(Sans nom)'}</Text>
                     </TouchableOpacity>
                   ))}
