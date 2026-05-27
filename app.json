@@ -42,9 +42,15 @@
       "favicon": "./assets/favicon.png"
     },
     "scheme": "dlc-manager",
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "plugins": [
       "expo-router",
       "expo-sqlite",
+      "expo-updates",
       [
         "react-native-ble-manager",
         {
