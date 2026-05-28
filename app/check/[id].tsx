@@ -568,9 +568,23 @@ function ProductCheckView({
 
             {/* Bouton imprimante Zebra — à côté du flash */}
             <TouchableOpacity
-              style={[styles.printerBadge, printer.isConnected ? styles.printerBadgeConnected : styles.printerBadgeDisconnected]}
-              onPress={() => {
-                setShowPrinterModal(true);
+              style={[
+                styles.printerBadge,
+                printer.isConnected ? styles.printerBadgeConnected :
+                printer.isConnecting ? styles.printerBadgeConnecting :
+                styles.printerBadgeDisconnected,
+              ]}
+              onPress={async () => {
+                if (printer.isConnected || printer.isConnecting) {
+                  setShowPrinterModal(true);
+                  return;
+                }
+                if (printer.savedDeviceId) {
+                  const ok = await printer.tryAutoConnect();
+                  if (!ok) setShowPrinterModal(true);
+                } else {
+                  setShowPrinterModal(true);
+                }
               }}
               activeOpacity={0.75}
             >
@@ -811,6 +825,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
   },
   printerBadgeConnected: { backgroundColor: '#16A34A', shadowColor: '#16A34A' },
+  printerBadgeConnecting: { backgroundColor: '#F59E0B', shadowColor: '#F59E0B' },
   printerBadgeDisconnected: { backgroundColor: '#DC2626', shadowColor: '#DC2626' },
   discountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
   discountBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },

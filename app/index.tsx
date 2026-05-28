@@ -354,13 +354,24 @@ export default function HomeScreen() {
         <View style={styles.headerButtons}>
           <TouchableOpacity
             style={styles.headerButton}
-            onPress={() => setShowPrinterModal(true)}
+            onPress={async () => {
+              if (printer.isConnected || printer.isConnecting) {
+                setShowPrinterModal(true);
+                return;
+              }
+              if (printer.savedDeviceId) {
+                const ok = await printer.tryAutoConnect();
+                if (!ok) setShowPrinterModal(true);
+              } else {
+                setShowPrinterModal(true);
+              }
+            }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons
-              name="print-outline"
+              name={printer.isConnecting ? 'radio-button-on-outline' : 'print-outline'}
               size={22}
-              color={printer.isConnected ? '#16A34A' : '#DC2626'}
+              color={printer.isConnected ? '#16A34A' : printer.isConnecting ? '#F59E0B' : '#DC2626'}
             />
           </TouchableOpacity>
           <TouchableOpacity

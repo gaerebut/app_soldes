@@ -216,6 +216,18 @@ class ZebraPrinterService {
     }
   }
 
+  async tryAutoConnect(): Promise<boolean> {
+    if (this.state.isConnected || this.state.isConnecting || !this.state.savedDeviceId) {
+      return false;
+    }
+    try {
+      await this.connect(this.state.savedDeviceId, this.state.savedName ?? 'Zebra ZQ620');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async setDiscount(pct: number): Promise<void> {
     const clamped = Math.max(10, Math.min(80, Math.round(pct / 5) * 5));
     this.state.discount = clamped;
