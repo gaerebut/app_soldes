@@ -697,7 +697,8 @@ function ProductCheckView({
                 disabled={printer.isPrinting}
                 onPress={async () => {
                   setPrintError('');
-                  const zpl = buildSoldeLabel(product?.name ?? '', product?.barcode ?? '', printer.discount, printQty);
+                  const storeName = await AsyncStorage.getItem('dlc_device_name') ?? '';
+                  const zpl = buildSoldeLabel(product?.name ?? '', product?.barcode ?? '', printer.discount, printQty, storeName);
                   try {
                     await printer.print(zpl);
                     setShowPrintModal(false);

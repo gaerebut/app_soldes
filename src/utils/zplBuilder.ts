@@ -2,25 +2,48 @@ export function buildSoldeLabel(
   productName: string,
   barcode: string,
   discountPercent: number,
-  quantity: number = 1
+  quantity: number = 1,
+  storeName: string = ''
 ): string {
   const name = productName.toUpperCase().substring(0, 80);
   const pct = `-${discountPercent}%`;
   const ean = barcode.trim();
+  const store = storeName.trim().toUpperCase().substring(0, 25);
+  const hasStore = store.length > 0;
 
-  return (
-    `^XA\n` +
-    `^CI28\n` +
-    `^PW480\n` +
-    `^LL320\n` +
-    `^FO15,15^A0N,24,24^FDA CONSOMMER^FS\n` +
-    `^FO15,45^A0N,24,24^FDRAPIDEMENT^FS\n` +
-    `^FO300,8^GB170,68,68,B,0^FS\n` +
-    `^FO300,18^A0N,46,46^FR^FB170,1,0,C^FD${pct}^FS\n` +
-    `^FO15,90^GB460,3,3^FS\n` +
-    `^FO15,105^A0N,22,22^FB460,3,5,L^FD${name}^FS\n` +
-    (ean ? `^FO80,230^BY2,2.5^BCN,40,N,N,N^FD${ean}^FS\n^FO15,283^A0N,14,14^FB460,1,0,C^FD${ean}^FS\n` : '') +
-    `^PQ${quantity}\n` +
-    `^XZ`
-  );
+  // Font size and Y positions adapt when store name is shown
+  const titleSize = hasStore ? 28 : 34;
+  const aY = hasStore ? 26 : 10;
+  const rapY = aY + titleSize + 4;
+  const lineY = rapY + titleSize + 4;
+  const nameY = lineY + 8;
+
+  const lines: string[] = [
+    `^XA`,
+    `^CI28`,
+    `^PW480`,
+    `^LL320`,
+    // Store name — small text top-left
+    ...(hasStore ? [`^FO10,7^A0N,16,16^FD${store}^FS`] : []),
+    // "A CONSOMMER" / "RAPIDEMENT" — large bold left
+    `^FO10,${aY}^A0N,${titleSize},${titleSize}^FDA CONSOMMER^FS`,
+    `^FO10,${rapY}^A0N,${titleSize},${titleSize}^FDRAPIDEMENT^FS`,
+    // Underline
+    `^FO10,${lineY}^GB295,4,4^FS`,
+    // Discount badge — filled dark box right
+    `^FO313,4^GB162,92,92,B,4^FS`,
+    // Discount text — white on black, centered, very large
+    `^FO313,14^A0N,70,64^FR^FB162,1,0,C^FD${pct}^FS`,
+    // Product name — multiline, up to 3 lines
+    `^FO10,${nameY}^A0N,24,24^FB460,3,5,L^FD${name}^FS`,
+    // Barcode — EAN/Code128, full width
+    ...(ean ? [
+      `^FO25,213^BY2,2.5^BCN,62,N,N,N^FD${ean}^FS`,
+      `^FO10,286^A0N,16,16^FB460,1,0,C^FD${ean}^FS`,
+    ] : []),
+    `^PQ${quantity}`,
+    `^XZ`,
+  ];
+
+  return lines.join('\n');
 }
