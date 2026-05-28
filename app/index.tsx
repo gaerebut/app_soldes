@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../src/constants/theme';
 import {
@@ -48,6 +49,7 @@ export default function HomeScreen() {
   const [showPrinterModal, setShowPrinterModal] = useState(false);
   const printer = useZebraPrinter();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const loadData = useCallback(async () => {
     const today = getTodayStr();
@@ -345,7 +347,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>DLC Manager</Text>
@@ -374,7 +376,7 @@ export default function HomeScreen() {
       <PrinterConfigModal visible={showPrinterModal} onClose={() => setShowPrinterModal(false)} />
 
       {/* Tab buttons */}
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'a_traiter' && styles.tabButtonActive]}
           onPress={() => setActiveTab('a_traiter')}
@@ -691,7 +693,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
   },
-  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 16, marginBottom: 12 },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 16, marginBottom: 0 },
   tabButton: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12,
