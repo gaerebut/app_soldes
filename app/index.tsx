@@ -350,7 +350,7 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>DLC Manager</Text>
+        <Text style={styles.title}>DLC Manager ✓</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity
             style={styles.headerButton}
