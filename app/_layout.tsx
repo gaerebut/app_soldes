@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,11 +11,18 @@ import NetworkGuard from '../src/realtime/NetworkGuard';
 import SocketManager from '../src/realtime/SocketManager';
 import { getOrCreateDeviceId } from '../src/utils/device';
 import { getAllAisles } from '../src/database/aisles';
+import * as NavigationBar from 'expo-navigation-bar';
 
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+    }
+  }, []);
 
   useEffect(() => {
     if (isLoading) return;
