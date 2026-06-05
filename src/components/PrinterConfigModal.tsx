@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, StyleSheet,
-  ActivityIndicator, Pressable,
+  ActivityIndicator, Pressable, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -90,6 +90,50 @@ export default function PrinterConfigModal({ visible, onClose }: Props) {
                 </TouchableOpacity>
               )}
 
+              {/* BLE scan button */}
+              {disconnected && !printer.isScanning && (
+                <TouchableOpacity style={styles.bleBtn} onPress={() => printer.startScan()}>
+                  <Ionicons name="bluetooth-outline" size={20} color="#3B82F6" />
+                  <Text style={styles.bleBtnText}>Rechercher via Bluetooth</Text>
+                </TouchableOpacity>
+              )}
+
+              {printer.isScanning && (
+                <View style={styles.scanningRow}>
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                  <Text style={styles.scanningText}>Recherche en cours…</Text>
+                  <TouchableOpacity onPress={() => printer.stopScan()}>
+                    <Text style={styles.stopScanText}>Arrêter</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {printer.foundDevices.length > 0 && (
+                <ScrollView style={styles.deviceList} nestedScrollEnabled>
+                  {printer.foundDevices.map((d) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={styles.deviceItem}
+                      onPress={async () => {
+                        setConnectError('');
+                        try {
+                          await printer.connect(d.id, d.name || d.id);
+                        } catch (e: any) {
+                          setConnectError(e.message || 'Connexion échouée');
+                        }
+                      }}
+                    >
+                      <Ionicons name="print-outline" size={18} color={Colors.text} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.deviceName}>{d.name || 'Zebra'}</Text>
+                        <Text style={styles.deviceId}>{d.id}</Text>
+                      </View>
+                      <Text style={styles.deviceRssi}>{d.rssi} dBm</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
               {!!connectError && <Text style={styles.errorText}>{connectError}</Text>}
 
               <View style={styles.separator} />
@@ -165,6 +209,24 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.primary,
   },
   barcodeBtnText: { color: Colors.primary, fontSize: 15, fontWeight: '600' },
+  bleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    paddingVertical: 14, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#3B82F6',
+  },
+  bleBtnText: { color: '#3B82F6', fontSize: 15, fontWeight: '600' },
+  scanningRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  scanningText: { flex: 1, fontSize: 14, color: Colors.textSecondary },
+  stopScanText: { fontSize: 13, color: '#DC2626', fontWeight: '600' },
+  deviceList: { maxHeight: 180, borderRadius: 12, borderWidth: 1, borderColor: Colors.border },
+  deviceItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  deviceName: { fontSize: 14, fontWeight: '600', color: Colors.text },
+  deviceId: { fontSize: 11, color: Colors.textSecondary },
+  deviceRssi: { fontSize: 12, color: Colors.textSecondary },
   errorText: { fontSize: 13, color: '#DC2626', textAlign: 'center' },
   separator: { height: 1, backgroundColor: Colors.border, marginVertical: 4 },
   discountLabel: {
