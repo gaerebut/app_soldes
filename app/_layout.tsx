@@ -11,8 +11,6 @@ import NetworkGuard from '../src/realtime/NetworkGuard';
 import SocketManager from '../src/realtime/SocketManager';
 import { getOrCreateDeviceId } from '../src/utils/device';
 import { getAllAisles } from '../src/database/aisles';
-import * as NavigationBar from 'expo-navigation-bar';
-
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
   const router = useRouter();
@@ -20,7 +18,8 @@ function RootLayoutNav() {
 
   useEffect(() => {
     if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden');
+      // Dynamic import — expo-navigation-bar is Android-only, static import crashes iOS
+      require('expo-navigation-bar').setVisibilityAsync('hidden');
     }
   }, []);
 
