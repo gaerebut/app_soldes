@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../src/constants/theme';
 import {
@@ -26,6 +27,8 @@ import {
 import { getTodayStr, formatDateShort, formatDateFR, toLocalDateStr } from '../src/utils/date';
 import { useRealtimeRefresh } from '../src/realtime/useRealtimeRefresh';
 import { getPricerToken, getCodeAnabel, apiClient } from '../src/api/client';
+import { useZebraPrinter } from '../src/hooks/useZebraPrinter';
+import PrinterConfigModal from '../src/components/PrinterConfigModal';
 
 type Tab = 'a_traiter' | 'rupture';
 
@@ -43,7 +46,10 @@ export default function HomeScreen() {
   const [productCountByDay, setProductCountByDay] = useState<Record<string, number>>({});
   const [todayPendingCount, setTodayPendingCount] = useState(0);
   const [flashingAll, setFlashingAll] = useState(false);
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+  const printer = useZebraPrinter();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const loadData = useCallback(async () => {
     const today = getTodayStr();
@@ -214,11 +220,11 @@ export default function HomeScreen() {
                 try {
                   const me = await apiClient.users.me();
                   if (!codeAnabel && me?.code_anabel) {
-                    codeAnabel = me.code_anabel;
+                    codeAnabel = me.code_anabel as string;
                     await AsyncStorage.setItem('dlc_code_anabel', codeAnabel);
                   }
                   if (!pricerToken && me?.pricer_token) {
-                    pricerToken = me.pricer_token;
+                    pricerToken = me.pricer_token as string;
                     await AsyncStorage.setItem('dlc_pricer_token', pricerToken);
                   }
                 } catch {}
@@ -341,21 +347,47 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>DLC Manager</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.push('/settings')}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="settings-outline" size={22} color={Colors.text} />
-        </TouchableOpacity>
+        <Text style={styles.title}>DLC Manager ✓</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={async () => {
+              if (printer.isConnected || printer.isConnecting) {
+                setShowPrinterModal(true);
+                return;
+              }
+              if (printer.savedDeviceId) {
+                const ok = await printer.tryAutoConnect();
+                if (!ok) setShowPrinterModal(true);
+              } else {
+                setShowPrinterModal(true);
+              }
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={printer.isConnecting ? 'radio-button-on-outline' : 'print-outline'}
+              size={22}
+              color={printer.isConnected ? '#16A34A' : printer.isConnecting ? '#F59E0B' : '#DC2626'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push('/settings')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="settings-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
+      <PrinterConfigModal visible={showPrinterModal} onClose={() => setShowPrinterModal(false)} />
+
       {/* Tab buttons */}
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'a_traiter' && styles.tabButtonActive]}
           onPress={() => setActiveTab('a_traiter')}
@@ -665,13 +697,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 60, paddingBottom: 8,
   },
   title: { fontSize: 28, fontWeight: '800', color: '#E3001B' },
+  headerButtons: { flexDirection: 'row', gap: 8 },
   headerButton: {
     width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.card,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
   },
-  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 16, marginBottom: 12 },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 16, marginBottom: 0 },
   tabButton: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12,

@@ -37,6 +37,9 @@ import Calendar from '../../src/components/Calendar';
 import CameraCapture from '../../src/components/CameraCapture';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { getAllAisles, Aisle } from '../../src/database/aisles';
+import { useZebraPrinter } from '../../src/hooks/useZebraPrinter';
+import { buildSoldeLabel } from '../../src/utils/zplBuilder';
+import PrinterConfigModal from '../../src/components/PrinterConfigModal';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -356,7 +359,7 @@ export default function CheckScreen() {
                   onPress={async () => {
                     const prod = productDataCache.get(currentId)?.product;
                     if (prod) {
-                      await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, prod.image_uri);
+                      await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, prod.image_uri ?? undefined);
                       productDataCache.delete(currentId);
                     }
                     setShowEditNameModal(false);
@@ -407,6 +410,12 @@ function ProductCheckView({
   const [aisles, setAisles] = useState<Aisle[]>(aislesCache ?? []);
   const [showAisleDropdown, setShowAisleDropdown] = useState(false);
   const [flashing, setFlashing] = useState(false);
+  const printer = useZebraPrinter();
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printQty, setPrintQty] = useState(1);
+  const [pendingDate, setPendingDate] = useState('');
+  const [printError, setPrintError] = useState('');
 
   const FLASH_DURATION_SEC = 4;
 
@@ -556,6 +565,31 @@ function ProductCheckView({
                 )}
               </TouchableOpacity>
             )}
+
+            {/* Bouton imprimante Zebra — à côté du flash */}
+            <TouchableOpacity
+              style={[
+                styles.printerBadge,
+                printer.isConnected ? styles.printerBadgeConnected :
+                printer.isConnecting ? styles.printerBadgeConnecting :
+                styles.printerBadgeDisconnected,
+              ]}
+              onPress={async () => {
+                if (printer.isConnected || printer.isConnecting) {
+                  setShowPrinterModal(true);
+                  return;
+                }
+                if (printer.savedDeviceId) {
+                  const ok = await printer.tryAutoConnect();
+                  if (!ok) setShowPrinterModal(true);
+                } else {
+                  setShowPrinterModal(true);
+                }
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="print-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
             {!isRupture && (
               product.barcode && (
                 <View style={styles.eanRow}>
@@ -578,11 +612,11 @@ function ProductCheckView({
               </TouchableOpacity>
               {showAisleDropdown && (
                 <View style={styles.aisleDropdownCompact}>
-                  <TouchableOpacity style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri, undefined); setShowAisleDropdown(false); }}>
+                  <TouchableOpacity style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri ?? undefined, undefined); setShowAisleDropdown(false); }}>
                     <Text style={[styles.aisleDropdownItemText, !product.aisle_id && styles.aisleDropdownItemTextActive]}>Aucun rayon</Text>
                   </TouchableOpacity>
                   {aisles.map((a) => (
-                    <TouchableOpacity key={a.id} style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri, a.id); setShowAisleDropdown(false); }}>
+                    <TouchableOpacity key={a.id} style={styles.aisleDropdownItem} onPress={() => { updateProduct(product.id, product.name, product.category, product.barcode ?? undefined, product.image_uri ?? undefined, a.id); setShowAisleDropdown(false); }}>
                       <Text style={[styles.aisleDropdownItemText, product.aisle_id === a.id && styles.aisleDropdownItemTextActive]}>{a.name || '(Sans nom)'}</Text>
                     </TouchableOpacity>
                   ))}
@@ -605,7 +639,18 @@ function ProductCheckView({
           {!isRupture && (
             <View style={styles.actions}>
               {selectedDate && (
-                <TouchableOpacity style={styles.okButton} onPress={async () => { await recordCheck(id, today, 'ok', selectedDate); productDataCache.delete(id); onGoToNext(); }} disabled={!isActive}>
+                <TouchableOpacity style={styles.okButton} onPress={async () => {
+                if (printer.isConnected) {
+                  setPendingDate(selectedDate);
+                  setPrintQty(1);
+                  setPrintError('');
+                  setShowPrintModal(true);
+                } else {
+                  await recordCheck(id, today, 'ok', selectedDate);
+                  productDataCache.delete(id);
+                  onGoToNext();
+                }
+              }} disabled={!isActive}>
                   <Ionicons name="checkmark-circle" size={24} color="#FFF" />
                   <Text style={styles.okButtonText}>Valider la DLC</Text>
                 </TouchableOpacity>
@@ -628,6 +673,80 @@ function ProductCheckView({
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ===== Modal config imprimante ===== */}
+      <PrinterConfigModal visible={showPrinterModal} onClose={() => setShowPrinterModal(false)} />
+
+      {/* ===== Modal impression étiquette ===== */}
+      <Modal visible={showPrintModal} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.printModalOverlay}>
+          <View style={styles.printModalContent}>
+            <Text style={styles.printModalTitle}>Imprimer l'étiquette</Text>
+            <Text style={styles.printModalSub}>{product?.name}</Text>
+            <Text style={styles.printModalDiscount}>Remise : -{printer.discount}%</Text>
+
+            <View style={styles.discountRow}>
+              <TouchableOpacity
+                style={[styles.discountBtn, printQty <= 1 && styles.discountBtnOff]}
+                onPress={() => setPrintQty((q) => Math.max(1, q - 1))}
+                disabled={printQty <= 1}
+              >
+                <Ionicons name="remove" size={22} color={printQty <= 1 ? Colors.textLight : Colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.discountValue}>{printQty} étiq.</Text>
+              <TouchableOpacity
+                style={[styles.discountBtn, printQty >= 99 && styles.discountBtnOff]}
+                onPress={() => setPrintQty((q) => Math.min(99, q + 1))}
+                disabled={printQty >= 99}
+              >
+                <Ionicons name="add" size={22} color={printQty >= 99 ? Colors.textLight : Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {!!printError && <Text style={styles.printErrorText}>{printError}</Text>}
+
+            <View style={styles.printModalActions}>
+              <TouchableOpacity
+                style={[styles.printModalPrintBtn, printer.isPrinting && styles.printModalPrintBtnOff]}
+                disabled={printer.isPrinting}
+                onPress={async () => {
+                  setPrintError('');
+                  const storeName = await AsyncStorage.getItem('dlc_device_name') ?? '';
+                  const zpl = buildSoldeLabel(product?.name ?? '', product?.barcode ?? '', printer.discount, printQty, storeName);
+                  try {
+                    await printer.print(zpl);
+                    setShowPrintModal(false);
+                    await recordCheck(id, today, 'ok', pendingDate);
+                    productDataCache.delete(id);
+                    onGoToNext();
+                  } catch (e: any) {
+                    setPrintError(e.message || 'Erreur impression');
+                  }
+                }}
+              >
+                {printer.isPrinting
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={styles.printModalPrintText}>Imprimer</Text>
+                }
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.printModalCloseBtn}
+                disabled={printer.isPrinting}
+                onPress={async () => {
+                  setShowPrintModal(false);
+                  await recordCheck(id, today, 'ok', pendingDate);
+                  productDataCache.delete(id);
+                  onGoToNext();
+                }}
+              >
+                <Text style={styles.printModalCloseText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -690,7 +809,7 @@ const styles = StyleSheet.create({
   editNameButtonSubmit: { backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, alignItems: 'center' },
   editNameButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   flashBadge: {
-    position: 'absolute', top: 8, right: 8,
+    position: 'absolute', top: 8, right: 56,
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: '#7C3AED',
     alignItems: 'center', justifyContent: 'center',
@@ -699,4 +818,29 @@ const styles = StyleSheet.create({
   },
   flashBadgeActive: { backgroundColor: '#5B21B6', opacity: 0.8 },
   flashBadgeIcon: { position: 'absolute', bottom: 5, right: 5 },
+  printerBadge: {
+    position: 'absolute', top: 8, right: 8,
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 4,
+  },
+  printerBadgeConnected: { backgroundColor: '#16A34A', shadowColor: '#16A34A' },
+  printerBadgeConnecting: { backgroundColor: '#F59E0B', shadowColor: '#F59E0B' },
+  printerBadgeDisconnected: { backgroundColor: '#DC2626', shadowColor: '#DC2626' },
+  discountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
+  discountBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  discountBtnOff: { opacity: 0.35 },
+  discountValue: { fontSize: 24, fontWeight: '800', color: Colors.text, minWidth: 80, textAlign: 'center' },
+  printModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  printModalContent: { backgroundColor: Colors.background, borderRadius: 20, padding: 24, width: '86%', gap: 14, alignItems: 'center' },
+  printModalTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
+  printModalSub: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  printModalDiscount: { fontSize: 13, fontWeight: '600', color: '#16A34A' },
+  printModalActions: { flexDirection: 'row', gap: 12, marginTop: 4, width: '100%' },
+  printModalPrintBtn: { flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  printModalPrintBtnOff: { opacity: 0.6 },
+  printModalPrintText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  printModalCloseBtn: { flex: 1, backgroundColor: Colors.card, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
+  printModalCloseText: { color: Colors.text, fontSize: 16, fontWeight: '600' },
+  printErrorText: { fontSize: 13, color: '#DC2626', textAlign: 'center' },
 });

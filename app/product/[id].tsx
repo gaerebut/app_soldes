@@ -267,7 +267,7 @@ export default function EditProductScreen() {
                   onPress={async () => {
                     const prod = productDataCache.get(currentId)?.product;
                     if (prod) {
-                      await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, prod.image_uri, prod.aisle_id);
+                      await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, prod.image_uri ?? undefined, prod.aisle_id ?? undefined);
                       productDataCache.delete(currentId);
                     }
                     setShowEditNameModal(false);
@@ -438,7 +438,7 @@ function ProductEditView({ id, isActive, pointerEvents }: ProductEditViewProps) 
             } catch (error) {
               console.error('Photo upload error:', error);
             }
-            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri, prod.aisle_id);
+            await updateProduct(prod.id, prod.name, prod.category, prod.barcode ?? undefined, finalImageUri ?? undefined, prod.aisle_id ?? undefined);
             productDataCache.delete(id);
             fetchProductData(id);
           }

@@ -3,6 +3,7 @@
     "name": "DLC Manager",
     "slug": "dlc-manager",
     "version": "1.0.0",
+    "runtimeVersion": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,23 +14,50 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gaerebut.dlcmanager",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "L'app a besoin du Bluetooth pour se connecter à l'imprimante Zebra.",
+        "NSBluetoothPeripheralUsageDescription": "L'app a besoin du Bluetooth pour se connecter à l'imprimante Zebra."
+      }
     },
     "android": {
+      "package": "com.gaerebut.dlcmanager",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "scheme": "dlc-manager",
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "plugins": [
       "expo-router",
       "expo-sqlite",
+      "expo-updates",
+      [
+        "react-native-ble-manager",
+        {
+          "isBackgroundEnabled": false,
+          "neverForLocation": true
+        }
+      ],
       [
         "expo-camera",
         {

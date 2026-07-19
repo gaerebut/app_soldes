@@ -1,20 +1,27 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../src/constants/theme';
 import { AuthProvider, useAuth } from '../src/auth/AuthContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NetworkGuard from '../src/realtime/NetworkGuard';
 import SocketManager from '../src/realtime/SocketManager';
 import { getOrCreateDeviceId } from '../src/utils/device';
 import { getAllAisles } from '../src/database/aisles';
-
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      // Dynamic import — expo-navigation-bar is Android-only, static import crashes iOS
+      require('expo-navigation-bar').setVisibilityAsync('hidden');
+    }
+  }, []);
 
   useEffect(() => {
     if (isLoading) return;
@@ -130,9 +137,11 @@ function RootLayoutNav() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <RootLayoutNav />
-      </AuthProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <RootLayoutNav />
+        </AuthProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
